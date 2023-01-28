@@ -1,0 +1,9 @@
+protobuf==3.19.4
+numpy
+ipython
+matplotlib
+ipdb
+scipy
+torch
+ray
+numba
