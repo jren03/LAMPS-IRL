@@ -4,3 +4,4 @@ The code for the following experiments can be found:
 - Helicopter expts: `HelicopterSysID`
 - WideTree expts: `WideTreeSysID`
 - LDS expts: `LDSSysID`
+- Mujoco expts: `MujocoSysID`

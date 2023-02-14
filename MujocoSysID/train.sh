@@ -1,0 +1,1 @@
+python -m mbrl.examples.main algorithm=lamps overrides=lamps_humanoid experiment=result seed=1,12,123,1234,12345 --multirun
