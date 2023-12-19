@@ -39,7 +39,6 @@ def rollout_model_and_populate_sac_buffer(
     rollout_horizon: int,
     batch_size: int,
 ):
-
     batch = replay_buffer.sample(batch_size)
     initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
     model_state = model_env.reset(
@@ -69,9 +68,8 @@ def evaluate(
     agent: SACAgent,
     num_episodes: int,
     video_recorder: VideoRecorder,
-    maze=False
+    maze=False,
 ) -> float:
-    
     avg_episode_reward = 0
 
     success = 0
@@ -87,7 +85,7 @@ def evaluate(
             video_recorder.record(env)
             episode_reward += reward
         if maze:
-            success += (episode_reward >0)
+            success += episode_reward > 0
             avg_episode_reward += episode_reward
         else:
             avg_episode_reward += episode_reward
@@ -136,7 +134,7 @@ def train(
         cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
     )
 
-    is_maze = 'maze' in cfg.overrides.env
+    is_maze = "maze" in cfg.overrides.env
     if is_maze:
         expert_dataset = d4rl.qlearning_dataset(env)
 
@@ -145,7 +143,10 @@ def train(
             cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
         )
         expert.sac_agent.load_checkpoint(
-            ckpt_path=os.path.join(os.path.expanduser('~/mbrl-lib/'+ cfg.algorithm.expert_dir), "sac.pth"), evaluate=True
+            ckpt_path=os.path.join(
+                os.path.expanduser("~/mbrl-lib/" + cfg.algorithm.expert_dir), "sac.pth"
+            ),
+            evaluate=True,
         )
 
     work_dir = work_dir or os.getcwd()
@@ -194,11 +195,11 @@ def train(
         mbrl.planning.RandomAgent(env) if random_explore else agent,
         {} if random_explore else {"sample": True, "batched": False},
         replay_buffer=replay_buffer,
-        additional_buffer=policy_buffer
+        additional_buffer=policy_buffer,
     )
 
     # ------------ Fill expert buffer ---------------------
-    
+
     expert_replay_buffer = mbrl.util.common.create_replay_buffer(
         cfg,
         obs_shape,
@@ -214,14 +215,14 @@ def train(
             expert_dataset["actions"][:1000],
             expert_dataset["next_observations"][:1000],
             expert_dataset["rewards"][:1000],
-            expert_dataset["terminals"][:1000]
+            expert_dataset["terminals"][:1000],
         )
         expert_replay_buffer.add_batch(
-            expert_dataset["observations"][:cfg.overrides.expert_size],
-            expert_dataset["actions"][:cfg.overrides.expert_size],
-            expert_dataset["next_observations"][:cfg.overrides.expert_size],
-            expert_dataset["rewards"][:cfg.overrides.expert_size],
-            expert_dataset["terminals"][:cfg.overrides.expert_size]
+            expert_dataset["observations"][: cfg.overrides.expert_size],
+            expert_dataset["actions"][: cfg.overrides.expert_size],
+            expert_dataset["next_observations"][: cfg.overrides.expert_size],
+            expert_dataset["rewards"][: cfg.overrides.expert_size],
+            expert_dataset["terminals"][: cfg.overrides.expert_size],
         )
     else:
         expert_rewards = mbrl.util.common.rollout_agent_trajectories(
@@ -230,7 +231,7 @@ def train(
             expert,
             {"sample": True, "batched": False},
             replay_buffer=replay_buffer,
-            additional_buffer=expert_replay_buffer
+            additional_buffer=expert_replay_buffer,
         )
         print(np.mean(expert_rewards))
 
@@ -240,9 +241,8 @@ def train(
             expert,
             {"sample": True, "batched": False},
             replay_buffer=expert_replay_buffer,
-            additional_buffer=None
+            additional_buffer=None,
         )
-
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
@@ -287,11 +287,17 @@ def train(
                 env, obs, agent, {}, replay_buffer, policy_buffer
             )
 
-            exp_obs, exp_next_obs,  exp_act, exp_reward, exp_done = expert_replay_buffer.sample_one()
+            (
+                exp_obs,
+                exp_next_obs,
+                exp_act,
+                exp_reward,
+                exp_done,
+            ) = expert_replay_buffer.sample_one()
             replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
 
             # --------------- Model Training -----------------
-            if (env_steps + 1) % int(cfg.overrides.freq_train_model/2) == 0:
+            if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
                 mbrl.util.common.train_model_and_save_model_and_data(
                     dynamics_model,
                     model_trainer,
@@ -302,9 +308,10 @@ def train(
 
                 # --------- Rollout new model and store imagined trajectories --------
                 # Batch all rollouts for the next freq_train_model steps together
-                
-                
+
                 use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
+                # ! most configs have model_exp_ratio == 0.0, so use_expert_data is always False
+                # ! however, replay_buffer contains a bit of expert data each iteration
                 rollout_model_and_populate_sac_buffer(
                     model_env,
                     expert_replay_buffer if use_expert_data else replay_buffer,
@@ -323,21 +330,21 @@ def train(
                         f"Steps: {env_steps}"
                     )
                 print(
-                        f"Epoch: {epoch}. "
-                        f"SAC buffer size: {len(sac_buffer)}. "
-                        f"Rollout length: {rollout_length}. "
-                        f"Steps: {env_steps}"
-                    )
+                    f"Epoch: {epoch}. "
+                    f"SAC buffer size: {len(sac_buffer)}. "
+                    f"Rollout length: {rollout_length}. "
+                    f"Steps: {env_steps}"
+                )
 
             # --------------- Agent Training -----------------
             for _ in range(cfg.overrides.num_sac_updates_per_step):
                 use_real_data = rng.random() < cfg.algorithm.real_data_ratio
+                # ! in the existing configs, use_real_data is always False because real_data_ratio == 0.0
                 which_buffer = replay_buffer if use_real_data else sac_buffer
                 if (env_steps + 1) % cfg.overrides.sac_updates_every_steps != 0 or len(
                     which_buffer
                 ) < cfg.overrides.sac_batch_size:
                     break  # only update every once in a while
-
 
                 if cfg.overrides.policy_exp_ratio > 1:
                     agent.sac_agent.update_parameters(
@@ -348,9 +355,8 @@ def train(
                         reverse_mask=True,
                     )
 
-                else: 
+                else:
                     if rng.random() < cfg.overrides.policy_exp_ratio:
-
                         agent.sac_agent.adv_update_parameters(
                             which_buffer,
                             expert_replay_buffer,
@@ -359,7 +365,7 @@ def train(
                             logger,
                             reverse_mask=True,
                         )
-                    
+
                     else:
                         agent.sac_agent.adv_update_parameters(
                             which_buffer,
@@ -378,7 +384,11 @@ def train(
             if (env_steps + 1) % cfg.overrides.epoch_length == 0:
                 if not is_maze:
                     avg_reward = evaluate(
-                        test_env, agent, cfg.algorithm.num_eval_episodes, video_recorder, is_maze
+                        test_env,
+                        agent,
+                        cfg.algorithm.num_eval_episodes,
+                        video_recorder,
+                        is_maze,
                     )
                     logger.log_data(
                         mbrl.constants.RESULTS_LOG_NAME,
@@ -391,7 +401,11 @@ def train(
                     )
                 else:
                     avg_reward, success_rate = evaluate(
-                        test_env, agent, cfg.algorithm.num_eval_episodes, video_recorder, is_maze
+                        test_env,
+                        agent,
+                        cfg.algorithm.num_eval_episodes,
+                        video_recorder,
+                        is_maze,
                     )
                     logger.log_data(
                         mbrl.constants.RESULTS_LOG_NAME,
@@ -399,7 +413,7 @@ def train(
                             "epoch": epoch,
                             "env_step": env_steps,
                             "episode_reward": avg_reward,
-                            'success_rate': success_rate,
+                            "success_rate": success_rate,
                             "rollout_length": rollout_length,
                         },
                     )

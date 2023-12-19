@@ -1,5 +1,5 @@
 # @package _group_
-env: "gym___HalfCheetah-v2"
+env: "gym___HalfCheetah-v3"
 term_fn: "no_termination"
 
 expert_dir: "expert/halfcheetah"
