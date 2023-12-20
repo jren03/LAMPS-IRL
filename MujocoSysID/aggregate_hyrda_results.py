@@ -10,13 +10,18 @@ def is_non_zero_file(fpath):
     return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 
 
-def main(env_name):
+def main(env_name, override):
     algs = ["lamps", "sysid"]
 
     for alg in algs:
         base_dir = Path("exp", alg, "result", env_name)
         csv_results_dir = Path("csv_results", env_name)
         csv_results_dir.mkdir(exist_ok=True, parents=True)
+        if override:
+            # clear the csv_results directory
+            for f in csv_results_dir.glob("*"):
+                if f.is_file():
+                    f.unlink()
 
         # loop through date/run_id/multi_run_num
         for subdir in base_dir.glob("*/*/*"):
@@ -44,6 +49,8 @@ def main(env_name):
 
             # Copy the csv file to the csv_results directory
             new_file_path = Path(csv_results_dir, f"{alg}_s{seed}.csv")
+            if new_file_path.exists():
+                continue
             shutil.copy(results_file, new_file_path)
             print(f"{results_file} ==> {new_file_path}")
 
@@ -57,6 +64,7 @@ if __name__ == "__main__":
         choices=["ant", "hc", "hop", "hum", "walk"],
         help="Name of the environment",
     )
+    parser.add_argument("-o", "--override", action="store_true", default=False)
     args = parser.parse_args()
 
     env_abbr = args.env_name
@@ -71,4 +79,4 @@ if __name__ == "__main__":
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
     env_name = f"gym___{env_name}"
-    main(env_name)
+    main(env_name, args.override)
