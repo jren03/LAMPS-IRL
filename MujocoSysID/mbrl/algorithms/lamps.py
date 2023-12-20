@@ -21,6 +21,7 @@ import mbrl.util.common
 import mbrl.util.math
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
+from mbrl.util.fetch_demos import fetch_demos
 
 MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("epoch", "E", "int"),
@@ -135,19 +136,7 @@ def train(
     )
 
     is_maze = "maze" in cfg.overrides.env
-    if is_maze:
-        expert_dataset = d4rl.qlearning_dataset(env)
-
-    else:
-        expert = SACAgent(
-            cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
-        )
-        expert.sac_agent.load_checkpoint(
-            ckpt_path=os.path.join(
-                os.path.expanduser("~/mbrl-lib/" + cfg.algorithm.expert_dir), "sac.pth"
-            ),
-            evaluate=True,
-        )
+    expert_dataset = fetch_demos(cfg.overrides.env)
 
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
@@ -209,40 +198,20 @@ def train(
         action_type=dtype,
         reward_type=dtype,
     )
-    if is_maze:
-        replay_buffer.add_batch(
-            expert_dataset["observations"][:1000],
-            expert_dataset["actions"][:1000],
-            expert_dataset["next_observations"][:1000],
-            expert_dataset["rewards"][:1000],
-            expert_dataset["terminals"][:1000],
-        )
-        expert_replay_buffer.add_batch(
-            expert_dataset["observations"][: cfg.overrides.expert_size],
-            expert_dataset["actions"][: cfg.overrides.expert_size],
-            expert_dataset["next_observations"][: cfg.overrides.expert_size],
-            expert_dataset["rewards"][: cfg.overrides.expert_size],
-            expert_dataset["terminals"][: cfg.overrides.expert_size],
-        )
-    else:
-        expert_rewards = mbrl.util.common.rollout_agent_trajectories(
-            env,
-            1000,
-            expert,
-            {"sample": True, "batched": False},
-            replay_buffer=replay_buffer,
-            additional_buffer=expert_replay_buffer,
-        )
-        print(np.mean(expert_rewards))
-
-        expert_rewards = mbrl.util.common.rollout_agent_trajectories(
-            env,
-            cfg.overrides.expert_size,
-            expert,
-            {"sample": True, "batched": False},
-            replay_buffer=expert_replay_buffer,
-            additional_buffer=None,
-        )
+    replay_buffer.add_batch(
+        expert_dataset["observations"][:1000],
+        expert_dataset["actions"][:1000],
+        expert_dataset["next_observations"][:1000],
+        expert_dataset["rewards"][:1000],
+        expert_dataset["terminals"][:1000],
+    )
+    expert_replay_buffer.add_batch(
+        expert_dataset["observations"][: cfg.overrides.expert_size],
+        expert_dataset["actions"][: cfg.overrides.expert_size],
+        expert_dataset["next_observations"][: cfg.overrides.expert_size],
+        expert_dataset["rewards"][: cfg.overrides.expert_size],
+        expert_dataset["terminals"][: cfg.overrides.expert_size],
+    )
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
