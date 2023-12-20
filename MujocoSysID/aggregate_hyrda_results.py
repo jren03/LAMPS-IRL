@@ -1,0 +1,74 @@
+from pathlib import Path
+from argparse import ArgumentParser
+import pandas as pd
+import shutil
+import os
+import yaml
+
+
+def is_non_zero_file(fpath):
+    return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
+
+
+def main(env_name):
+    algs = ["lamps", "sysid"]
+
+    for alg in algs:
+        base_dir = Path("exp", alg, "result", env_name)
+        csv_results_dir = Path("csv_results", env_name)
+        csv_results_dir.mkdir(exist_ok=True, parents=True)
+
+        # loop through date/run_id/multi_run_num
+        for subdir in base_dir.glob("*/*/*"):
+            if not subdir.is_dir():
+                continue
+            results_file = Path(subdir, "results.csv")
+            if not results_file.exists():
+                continue
+
+            # Make sure results.csv has 150 entries
+            if is_non_zero_file(results_file) and len(pd.read_csv(results_file)) != 150:
+                continue
+
+            # Look into .hydra directory for the hydra.yml file
+            config_yaml = Path(subdir, ".hydra", "config.yaml")
+            if not config_yaml.exists():
+                continue
+            # Read the seed number from the hydra.yml file
+            with open(config_yaml, "r") as stream:
+                try:
+                    hydra_yml = yaml.safe_load(stream)
+                    seed = hydra_yml.get("seed")
+                except yaml.YAMLError as exc:
+                    print(exc)
+
+            # Copy the csv file to the csv_results directory
+            new_file_path = Path(csv_results_dir, f"{alg}_s{seed}.csv")
+            shutil.copy(results_file, new_file_path)
+            print(f"{results_file} ==> {new_file_path}")
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument(
+        "-e",
+        "--env_name",
+        type=str,
+        choices=["ant", "hc", "hop", "hum", "walk"],
+        help="Name of the environment",
+    )
+    args = parser.parse_args()
+
+    env_abbr = args.env_name
+    if env_abbr == "ant":
+        env_name = "Ant-v3"
+    elif env_abbr == "hc":
+        env_name = "HalfCheetah-v3"
+    elif env_abbr == "hop":
+        env_name = "Hopper-v3"
+    elif env_abbr == "hum":
+        env_name = "Humanoid-v3"
+    elif env_abbr == "walk":
+        env_name = "Walker2d-v3"
+    env_name = f"gym___{env_name}"
+    main(env_name)
