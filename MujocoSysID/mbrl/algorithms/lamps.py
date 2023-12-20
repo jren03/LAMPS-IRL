@@ -138,17 +138,6 @@ def train(
     is_maze = "maze" in cfg.overrides.env
     expert_dataset = fetch_demos(cfg.overrides.env)
 
-    expert = SACAgent(
-        cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
-    )
-    expert.sac_agent.load_checkpoint(
-        ckpt_path=os.path.join(
-            os.path.expanduser("~/mbrl-lib/" + cfg.algorithm.expert_dir), "sac.pth"
-        ),
-        evaluate=True,
-    )
-    breakpoint()
-
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
     logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)

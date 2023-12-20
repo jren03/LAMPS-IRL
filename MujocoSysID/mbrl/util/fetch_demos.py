@@ -81,10 +81,13 @@ def fetch_demos(env_name):
         )
         dataset_path = "d4rl"
     else:
+        num_demos, T = 64, 1000
         project_root = Path("/share/portal/jlr429/pessimistic-irl/")
-        dataset_path = Path(project_root, "expert_data", f"{env_name}_100000_pranz.h5")
+        dataset_path = Path(project_root, "expert_data", f"{env_name}_100000_sb3.h5")
         dataset = h5py.File(dataset_path, "r")
-        dataset = {key: np.array(dataset[key])[:] for key in dataset.keys()}
+        dataset = {
+            key: np.array(dataset[key])[: num_demos * T] for key in dataset.keys()
+        }
 
         term = np.argwhere(
             np.logical_or(dataset["timeouts"] > 0, dataset["terminals"] > 0)

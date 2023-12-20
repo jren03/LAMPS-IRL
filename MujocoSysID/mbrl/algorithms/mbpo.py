@@ -50,14 +50,12 @@ def rollout_model_and_populate_sac_buffer(
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
         )
-        truncateds = np.zeros_like(pred_dones, dtype=bool)
         sac_buffer.add_batch(
             obs[~accum_dones],
             action[~accum_dones],
             pred_next_obs[~accum_dones],
             pred_rewards[~accum_dones, 0],
             pred_dones[~accum_dones, 0],
-            truncateds[~accum_dones, 0],
         )
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
@@ -68,20 +66,29 @@ def evaluate(
     agent: SACAgent,
     num_episodes: int,
     video_recorder: VideoRecorder,
+    maze=False,
 ) -> float:
-    avg_episode_reward = 0.0
+    avg_episode_reward = 0
+
+    success = 0
+
     for episode in range(num_episodes):
-        obs, _ = env.reset()
+        obs = env.reset()
         video_recorder.init(enabled=(episode == 0))
-        terminated = False
-        truncated = False
-        episode_reward = 0.0
-        while not terminated and not truncated:
+        done = False
+        episode_reward = 0
+        while not done:
             action = agent.act(obs)
-            obs, reward, terminated, truncated, _ = env.step(action)
+            obs, reward, done, _ = env.step(action)
             video_recorder.record(env)
             episode_reward += reward
-        avg_episode_reward += episode_reward
+        if maze:
+            success += episode_reward > 0
+            avg_episode_reward += episode_reward
+        else:
+            avg_episode_reward += episode_reward
+    if maze:
+        return avg_episode_reward / num_episodes, success / num_episodes
     return avg_episode_reward / num_episodes
 
 
@@ -100,15 +107,8 @@ def maybe_replace_sac_buffer(
         new_buffer = mbrl.util.ReplayBuffer(new_capacity, obs_shape, act_shape, rng=rng)
         if sac_buffer is None:
             return new_buffer
-        (
-            obs,
-            action,
-            next_obs,
-            reward,
-            terminated,
-            truncated,
-        ) = sac_buffer.get_all().astuple()
-        new_buffer.add_batch(obs, action, next_obs, reward, terminated, truncated)
+        obs, action, next_obs, reward, done = sac_buffer.get_all().astuple()
+        new_buffer.add_batch(obs, action, next_obs, reward, done)
         return new_buffer
     return sac_buffer
 
@@ -209,16 +209,12 @@ def train(
         truncated = False
         for steps_epoch in range(cfg.overrides.epoch_length):
             if steps_epoch == 0 or terminated or truncated:
-                steps_epoch = 0
-                obs, _ = env.reset()
-                terminated = False
-                truncated = False
+                obs, done = env.reset(), False
             # --- Doing env step and adding to model dataset ---
             (
                 next_obs,
                 reward,
-                terminated,
-                truncated,
+                done,
                 _,
             ) = mbrl.util.common.step_env_and_add_to_buffer(
                 env, obs, agent, {}, replay_buffer

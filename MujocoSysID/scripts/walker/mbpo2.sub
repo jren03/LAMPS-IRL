@@ -1,0 +1,22 @@
+#!/bin/bash
+#SBATCH -J wa_mbpo2                                    # Job name
+#SBATCH -o /share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/scripts/out/%j.out                  # output file (%j expands to jobID)
+#SBATCH -e /share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/scripts/err/%j.err                   # error log file (%j expands to jobID)
+#SBATCH --mail-type=ALL                      # Request status by email 
+#SBATCH --mail-user=jlr429@cornell.edu        # Email address to send results to.
+#SBATCH -N 1                                 # Total number of nodes requested
+#SBATCH -n 1                                 # Total number of cores requested
+#SBATCH --get-user-env                       # retrieve the users login environment
+#SBATCH --mem=20GB                           # server memory requested (per node)
+#SBATCH --exclude goodfellow,g2-compute-97,coecis-compute-01,coecis-compute-02 
+#SBATCH --time=168:00:00                     # Time limit (hh:mm:ss)
+#SBATCH --partition=gpu                     # Request partition
+#SBATCH --gres=gpu:1                        # Type/number of GPUs needed
+
+/home/jlr429/miniconda3/bin/conda init bash
+eval "$(conda shell.bash hook)"
+
+conda activate mbrl
+cd /share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID
+
+python -m mbrl.examples.main --multirun algorithm=mbpo overrides=mbpo_walker experiment=result seed=2

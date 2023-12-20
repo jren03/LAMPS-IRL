@@ -2,3 +2,5 @@
 *exp
 *csv_results
 *.pth
+*.err
+*.out
