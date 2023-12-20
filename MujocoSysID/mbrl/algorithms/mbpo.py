@@ -5,7 +5,7 @@
 import os
 from typing import Optional, Sequence, cast
 
-import gym
+import gymnasium as gym
 import hydra.utils
 import numpy as np
 import omegaconf
@@ -21,14 +21,11 @@ import mbrl.util.common
 import mbrl.util.math
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
-from mbrl.util.fetch_demos import fetch_demos
 
 MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("epoch", "E", "int"),
     ("rollout_length", "RL", "int"),
 ]
-
-import d4rl
 
 
 def rollout_model_and_populate_sac_buffer(
@@ -53,12 +50,14 @@ def rollout_model_and_populate_sac_buffer(
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
         )
+        truncateds = np.zeros_like(pred_dones, dtype=bool)
         sac_buffer.add_batch(
             obs[~accum_dones],
             action[~accum_dones],
             pred_next_obs[~accum_dones],
             pred_rewards[~accum_dones, 0],
             pred_dones[~accum_dones, 0],
+            truncateds[~accum_dones, 0],
         )
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
@@ -69,29 +68,20 @@ def evaluate(
     agent: SACAgent,
     num_episodes: int,
     video_recorder: VideoRecorder,
-    maze=False,
 ) -> float:
-    avg_episode_reward = 0
-
-    success = 0
-
+    avg_episode_reward = 0.0
     for episode in range(num_episodes):
-        obs = env.reset()
+        obs, _ = env.reset()
         video_recorder.init(enabled=(episode == 0))
-        done = False
-        episode_reward = 0
-        while not done:
+        terminated = False
+        truncated = False
+        episode_reward = 0.0
+        while not terminated and not truncated:
             action = agent.act(obs)
-            obs, reward, done, _ = env.step(action)
+            obs, reward, terminated, truncated, _ = env.step(action)
             video_recorder.record(env)
             episode_reward += reward
-        if maze:
-            success += episode_reward > 0
-            avg_episode_reward += episode_reward
-        else:
-            avg_episode_reward += episode_reward
-    if maze:
-        return avg_episode_reward / num_episodes, success / num_episodes
+        avg_episode_reward += episode_reward
     return avg_episode_reward / num_episodes
 
 
@@ -110,8 +100,15 @@ def maybe_replace_sac_buffer(
         new_buffer = mbrl.util.ReplayBuffer(new_capacity, obs_shape, act_shape, rng=rng)
         if sac_buffer is None:
             return new_buffer
-        obs, action, next_obs, reward, done = sac_buffer.get_all().astuple()
-        new_buffer.add_batch(obs, action, next_obs, reward, done)
+        (
+            obs,
+            action,
+            next_obs,
+            reward,
+            terminated,
+            truncated,
+        ) = sac_buffer.get_all().astuple()
+        new_buffer.add_batch(obs, action, next_obs, reward, terminated, truncated)
         return new_buffer
     return sac_buffer
 
@@ -134,20 +131,6 @@ def train(
     agent = SACAgent(
         cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
     )
-
-    is_maze = "maze" in cfg.overrides.env
-    expert_dataset = fetch_demos(cfg.overrides.env)
-
-    expert = SACAgent(
-        cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
-    )
-    expert.sac_agent.load_checkpoint(
-        ckpt_path=os.path.join(
-            os.path.expanduser("~/mbrl-lib/" + cfg.algorithm.expert_dir), "sac.pth"
-        ),
-        evaluate=True,
-    )
-    breakpoint()
 
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
@@ -179,15 +162,6 @@ def train(
         action_type=dtype,
         reward_type=dtype,
     )
-    policy_buffer = mbrl.util.common.create_replay_buffer(
-        cfg,
-        obs_shape,
-        act_shape,
-        rng=rng,
-        obs_type=dtype,
-        action_type=dtype,
-        reward_type=dtype,
-    )
     random_explore = cfg.algorithm.random_initial_explore
     mbrl.util.common.rollout_agent_trajectories(
         env,
@@ -195,33 +169,6 @@ def train(
         mbrl.planning.RandomAgent(env) if random_explore else agent,
         {} if random_explore else {"sample": True, "batched": False},
         replay_buffer=replay_buffer,
-        additional_buffer=policy_buffer,
-    )
-
-    # ------------ Fill expert buffer ---------------------
-
-    expert_replay_buffer = mbrl.util.common.create_replay_buffer(
-        cfg,
-        obs_shape,
-        act_shape,
-        rng=rng,
-        obs_type=dtype,
-        action_type=dtype,
-        reward_type=dtype,
-    )
-    replay_buffer.add_batch(
-        expert_dataset["observations"][:1000],
-        expert_dataset["actions"][:1000],
-        expert_dataset["next_observations"][:1000],
-        expert_dataset["rewards"][:1000],
-        expert_dataset["terminals"][:1000],
-    )
-    expert_replay_buffer.add_batch(
-        expert_dataset["observations"][: cfg.overrides.expert_size],
-        expert_dataset["actions"][: cfg.overrides.expert_size],
-        expert_dataset["next_observations"][: cfg.overrides.expert_size],
-        expert_dataset["rewards"][: cfg.overrides.expert_size],
-        expert_dataset["terminals"][: cfg.overrides.expert_size],
     )
 
     # ---------------------------------------------------------
@@ -257,27 +204,28 @@ def train(
         sac_buffer = maybe_replace_sac_buffer(
             sac_buffer, obs_shape, act_shape, sac_buffer_capacity, cfg.seed
         )
-        obs, done = None, False
-
+        obs = None
+        terminated = False
+        truncated = False
         for steps_epoch in range(cfg.overrides.epoch_length):
-            if steps_epoch == 0 or done:
-                obs, done = env.reset(), False
+            if steps_epoch == 0 or terminated or truncated:
+                steps_epoch = 0
+                obs, _ = env.reset()
+                terminated = False
+                truncated = False
             # --- Doing env step and adding to model dataset ---
-            next_obs, reward, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
-                env, obs, agent, {}, replay_buffer, policy_buffer
+            (
+                next_obs,
+                reward,
+                terminated,
+                truncated,
+                _,
+            ) = mbrl.util.common.step_env_and_add_to_buffer(
+                env, obs, agent, {}, replay_buffer
             )
 
-            (
-                exp_obs,
-                exp_next_obs,
-                exp_act,
-                exp_reward,
-                exp_done,
-            ) = expert_replay_buffer.sample_one()
-            replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
-
             # --------------- Model Training -----------------
-            if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
+            if (env_steps + 1) % cfg.overrides.freq_train_model == 0:
                 mbrl.util.common.train_model_and_save_model_and_data(
                     dynamics_model,
                     model_trainer,
@@ -288,13 +236,9 @@ def train(
 
                 # --------- Rollout new model and store imagined trajectories --------
                 # Batch all rollouts for the next freq_train_model steps together
-
-                use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
-                # ! most configs have model_exp_ratio == 0.0, so use_expert_data is always False
-                # ! however, replay_buffer contains a bit of expert data each iteration
                 rollout_model_and_populate_sac_buffer(
                     model_env,
-                    expert_replay_buffer if use_expert_data else replay_buffer,
+                    replay_buffer,
                     agent,
                     sac_buffer,
                     cfg.algorithm.sac_samples_action,
@@ -309,94 +253,41 @@ def train(
                         f"Rollout length: {rollout_length}. "
                         f"Steps: {env_steps}"
                     )
-                print(
-                    f"Epoch: {epoch}. "
-                    f"SAC buffer size: {len(sac_buffer)}. "
-                    f"Rollout length: {rollout_length}. "
-                    f"Steps: {env_steps}"
-                )
 
             # --------------- Agent Training -----------------
             for _ in range(cfg.overrides.num_sac_updates_per_step):
                 use_real_data = rng.random() < cfg.algorithm.real_data_ratio
-                # ! in the existing configs, use_real_data is always False because real_data_ratio == 0.0
                 which_buffer = replay_buffer if use_real_data else sac_buffer
                 if (env_steps + 1) % cfg.overrides.sac_updates_every_steps != 0 or len(
                     which_buffer
                 ) < cfg.overrides.sac_batch_size:
                     break  # only update every once in a while
 
-                if cfg.overrides.policy_exp_ratio > 1:
-                    agent.sac_agent.update_parameters(
-                        which_buffer,
-                        cfg.overrides.sac_batch_size,
-                        updates_made,
-                        logger,
-                        reverse_mask=True,
-                    )
-
-                else:
-                    if rng.random() < cfg.overrides.policy_exp_ratio:
-                        agent.sac_agent.adv_update_parameters(
-                            which_buffer,
-                            expert_replay_buffer,
-                            cfg.overrides.sac_batch_size,
-                            updates_made,
-                            logger,
-                            reverse_mask=True,
-                        )
-
-                    else:
-                        agent.sac_agent.adv_update_parameters(
-                            which_buffer,
-                            policy_buffer,
-                            cfg.overrides.sac_batch_size,
-                            updates_made,
-                            logger,
-                            reverse_mask=True,
-                        )
-
+                agent.sac_agent.update_parameters(
+                    which_buffer,
+                    cfg.overrides.sac_batch_size,
+                    updates_made,
+                    logger,
+                    reverse_mask=True,
+                )
                 updates_made += 1
                 if not silent and updates_made % cfg.log_frequency_agent == 0:
                     logger.dump(updates_made, save=True)
 
             # ------ Epoch ended (evaluate and save model) ------
             if (env_steps + 1) % cfg.overrides.epoch_length == 0:
-                if not is_maze:
-                    avg_reward = evaluate(
-                        test_env,
-                        agent,
-                        cfg.algorithm.num_eval_episodes,
-                        video_recorder,
-                        is_maze,
-                    )
-                    logger.log_data(
-                        mbrl.constants.RESULTS_LOG_NAME,
-                        {
-                            "epoch": epoch,
-                            "env_step": env_steps,
-                            "episode_reward": avg_reward,
-                            "rollout_length": rollout_length,
-                        },
-                    )
-                else:
-                    avg_reward, success_rate = evaluate(
-                        test_env,
-                        agent,
-                        cfg.algorithm.num_eval_episodes,
-                        video_recorder,
-                        is_maze,
-                    )
-                    logger.log_data(
-                        mbrl.constants.RESULTS_LOG_NAME,
-                        {
-                            "epoch": epoch,
-                            "env_step": env_steps,
-                            "episode_reward": avg_reward,
-                            "success_rate": success_rate,
-                            "rollout_length": rollout_length,
-                        },
-                    )
+                avg_reward = evaluate(
+                    test_env, agent, cfg.algorithm.num_eval_episodes, video_recorder
+                )
+                logger.log_data(
+                    mbrl.constants.RESULTS_LOG_NAME,
+                    {
+                        "epoch": epoch,
+                        "env_step": env_steps,
+                        "episode_reward": avg_reward,
+                        "rollout_length": rollout_length,
+                    },
+                )
                 if avg_reward > best_eval_reward:
                     video_recorder.save(f"{epoch}.mp4")
                     best_eval_reward = avg_reward

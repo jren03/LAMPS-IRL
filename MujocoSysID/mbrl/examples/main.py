@@ -7,7 +7,7 @@ import numpy as np
 import omegaconf
 import torch
 
-# import mbrl.algorithms.mbpo as mbpo
+import mbrl.algorithms.mbpo as mbpo
 import mbrl.algorithms.pets as pets
 import mbrl.algorithms.planet as planet
 import mbrl.algorithms.lamps as lamps
@@ -24,9 +24,9 @@ def run(cfg: omegaconf.DictConfig):
     torch.manual_seed(cfg.seed)
     if cfg.algorithm.name == "pets":
         return pets.train(env, term_fn, reward_fn, cfg)
-    # if cfg.algorithm.name == "mbpo":
-    #     test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
-    #     return mbpo.train(env, test_env, term_fn, cfg)
+    if cfg.algorithm.name == "mbpo":
+        test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
+        return mbpo.train(env, test_env, term_fn, cfg)
     if cfg.algorithm.name == "planet":
         return planet.train(env, cfg)
     if cfg.algorithm.name == "lamps":

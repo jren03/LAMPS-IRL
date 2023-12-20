@@ -11,6 +11,7 @@ def is_non_zero_file(fpath):
 
 
 def main(env_name, override):
+    # ! TODO: is it worth partitioning by date?
     algs = ["lamps", "sysid"]
 
     for alg in algs:
@@ -20,7 +21,7 @@ def main(env_name, override):
         if override:
             # clear the csv_results directory
             for f in csv_results_dir.glob("*"):
-                if f.is_file():
+                if f.is_file() and alg in f.name:
                     f.unlink()
 
         # loop through date/run_id/multi_run_num
@@ -32,7 +33,10 @@ def main(env_name, override):
                 continue
 
             # Make sure results.csv has 150 entries
-            if is_non_zero_file(results_file) and len(pd.read_csv(results_file)) != 150:
+            if (
+                not is_non_zero_file(results_file)
+                or len(pd.read_csv(results_file)) != 150
+            ):
                 continue
 
             # Look into .hydra directory for the hydra.yml file
