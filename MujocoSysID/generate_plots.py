@@ -54,25 +54,36 @@ def main(env_abbrv, env_name):
     csv_results_dir = Path("csv_results", env_name)
     algs_to_colors = {
         "exp": "green",
-        "sysid": "grey",
+        "mbpo": "grey",
+        "sysid": "#4bacc6",
         "lamps": "#F79646",
     }
     algs_to_labels = {
         "exp": "Demo",
+        "mbpo": "MBPO",
         "lamps": "LAMPS",
         "sysid": "SysID",
     }
     env_name_to_exp_scores = {
-        "ant": 5207.53,
-        "hc": 13088.32,
-        "hop": 3318.71,
-        "hum": 5708.24,
-        "walk": 5740.80,
+        # SB3 Experts
+        "ant": 4596,
+        "hc": 10317,
+        "hop": 978,
+        "walk": 4395,
+        "hum": 6160,
+        ### Yuda Experts
+        # "ant": 5207.53,
+        # "hc": 13088.32,
+        # "hop": 3318.71,
+        # "hum": 5708.24,
+        # "walk": 5740.80,
     }
 
-    steps = 150
+    steps = 125
     sz = 2000
     for alg in algs_to_colors.keys():
+        if not (alg == "exp" or alg == "mbpo"):
+            continue
         if alg == "exp":
             plt.plot(
                 np.arange(steps) * sz,
@@ -87,6 +98,9 @@ def main(env_abbrv, env_name):
             for csv in csvs:
                 data = pd.read_csv(csv).episode_reward.to_numpy()
                 scores.append(data)
+            if scores == []:
+                print(f"Skipping {alg}")
+                continue
             scores = np.stack(scores, axis=0)
             mean, std_err = (
                 calc_iqm(scores)["alg"],

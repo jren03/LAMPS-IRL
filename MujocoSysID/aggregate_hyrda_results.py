@@ -10,9 +10,8 @@ def is_non_zero_file(fpath):
     return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 
 
-def main(env_name, override):
-    # ! TODO: is it worth partitioning by date?
-    algs = ["lamps", "sysid"]
+def main(env_name, override, partition):
+    algs = ["lamps", "sysid", "mbpo"]
 
     for alg in algs:
         base_dir = Path("exp", alg, "result", env_name)
@@ -25,7 +24,7 @@ def main(env_name, override):
                     f.unlink()
 
         # loop through date/run_id/multi_run_num
-        for subdir in base_dir.glob("*/*/*"):
+        for subdir in base_dir.glob(f"{partition}/*/*"):
             if not subdir.is_dir():
                 continue
             results_file = Path(subdir, "results.csv")
@@ -33,10 +32,13 @@ def main(env_name, override):
                 continue
 
             # Make sure results.csv has 150 entries
-            if (
-                not is_non_zero_file(results_file)
-                or len(pd.read_csv(results_file)) != 150
-            ):
+            try:
+                df = pd.read_csv(results_file)
+            except Exception as e:
+                print(f"Error reading {results_file}: {e}")
+                continue
+
+            if not is_non_zero_file(results_file) or len(df) < 400:
                 continue
 
             # Look into .hydra directory for the hydra.yml file
@@ -69,6 +71,7 @@ if __name__ == "__main__":
         help="Name of the environment",
     )
     parser.add_argument("-o", "--override", action="store_true", default=False)
+    parser.add_argument("-p", type=str, default="*")
     args = parser.parse_args()
 
     env_abbr = args.env_name
@@ -83,4 +86,4 @@ if __name__ == "__main__":
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
     env_name = f"gym___{env_name}"
-    main(env_name, args.override)
+    main(env_name, args.override, args.p)
