@@ -68,7 +68,7 @@ def main(env_abbrv, env_name):
         # SB3 Experts
         "ant": 4596,
         "hc": 10317,
-        "hop": 978,
+        "hop": 3399,
         "walk": 4395,
         "hum": 6160,
         ### Yuda Experts
@@ -79,11 +79,9 @@ def main(env_abbrv, env_name):
         # "walk": 5740.80,
     }
 
-    steps = 125
+    steps = 150
     sz = 2000
     for alg in algs_to_colors.keys():
-        if not (alg == "exp" or alg == "mbpo"):
-            continue
         if alg == "exp":
             plt.plot(
                 np.arange(steps) * sz,
@@ -93,6 +91,12 @@ def main(env_abbrv, env_name):
                 label=algs_to_labels[alg],
             )
         else:
+            if alg == "mbpo":
+                steps = 150
+                sz = 4000
+            else:
+                steps = 30
+                sz = 10000
             csvs = [f for f in csv_results_dir.glob("*.csv") if alg in f.name]
             scores = []
             for csv in csvs:

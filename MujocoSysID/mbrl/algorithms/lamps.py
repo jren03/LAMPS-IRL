@@ -235,6 +235,7 @@ def train(
     best_eval_reward = -np.inf
     epoch = 0
     sac_buffer = None
+    eval_every = 5 * cfg.overrides.epoch_length
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
             mbrl.util.math.truncated_linear(
@@ -350,7 +351,7 @@ def train(
                     logger.dump(updates_made, save=True)
 
             # ------ Epoch ended (evaluate and save model) ------
-            if (env_steps + 1) % cfg.overrides.epoch_length == 0:
+            if (env_steps + 1) % (5 * cfg.overrides.epoch_length) == 0:
                 if not is_maze:
                     avg_reward = evaluate(
                         test_env,

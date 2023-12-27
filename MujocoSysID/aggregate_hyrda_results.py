@@ -10,11 +10,11 @@ def is_non_zero_file(fpath):
     return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 
 
-def main(env_name, override, partition):
+def main(env_name, override, partition, date):
     algs = ["lamps", "sysid", "mbpo"]
 
     for alg in algs:
-        base_dir = Path("exp", alg, "result", env_name)
+        base_dir = Path("exp", alg, partition, env_name)
         csv_results_dir = Path("csv_results", env_name)
         csv_results_dir.mkdir(exist_ok=True, parents=True)
         if override:
@@ -24,7 +24,7 @@ def main(env_name, override, partition):
                     f.unlink()
 
         # loop through date/run_id/multi_run_num
-        for subdir in base_dir.glob(f"{partition}/*/*"):
+        for subdir in base_dir.glob(f"{date}/*/*"):
             if not subdir.is_dir():
                 continue
             results_file = Path(subdir, "results.csv")
@@ -38,7 +38,8 @@ def main(env_name, override, partition):
                 print(f"Error reading {results_file}: {e}")
                 continue
 
-            if not is_non_zero_file(results_file) or len(df) < 400:
+            if not is_non_zero_file(results_file) or (len(df) < 75 and len(df) != 30):
+                print(f"Skipping {results_file} because it has {len(df)} entries")
                 continue
 
             # Look into .hydra directory for the hydra.yml file
@@ -71,7 +72,8 @@ if __name__ == "__main__":
         help="Name of the environment",
     )
     parser.add_argument("-o", "--override", action="store_true", default=False)
-    parser.add_argument("-p", type=str, default="*")
+    parser.add_argument("-p", type=str, default="result")
+    parser.add_argument("-d", type=str, required=True)
     args = parser.parse_args()
 
     env_abbr = args.env_name
@@ -86,4 +88,4 @@ if __name__ == "__main__":
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
     env_name = f"gym___{env_name}"
-    main(env_name, args.override, args.p)
+    main(env_name, args.override, args.p, args.d)
