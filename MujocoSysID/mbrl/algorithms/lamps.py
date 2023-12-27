@@ -146,9 +146,8 @@ def train(
         )
         expert.sac_agent.load_checkpoint(
             ckpt_path=os.path.join(
-                os.path.expanduser(
-                    "~/mbrl-lib/" + "expert/" + cfg.overrides.env.replace("gym___", "")
-                ),
+                "/share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/expert/",
+                cfg.overrides.env.replace("gym___", ""),
                 "sac.pth",
             ),
             evaluate=True,
@@ -333,12 +332,6 @@ def train(
                         f"Rollout length: {rollout_length}. "
                         f"Steps: {env_steps}"
                     )
-                print(
-                    f"Epoch: {epoch}. "
-                    f"SAC buffer size: {len(sac_buffer)}. "
-                    f"Rollout length: {rollout_length}. "
-                    f"Steps: {env_steps}"
-                )
 
             # --------------- Agent Training -----------------
             for _ in range(cfg.overrides.num_sac_updates_per_step):
