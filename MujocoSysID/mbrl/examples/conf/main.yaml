@@ -9,6 +9,7 @@ log_frequency_agent: 1000
 save_video: false
 debug_mode: false
 
+silent: true
 experiment: default
 seed: 1
 

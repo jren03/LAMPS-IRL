@@ -21,8 +21,8 @@ import mbrl.util.common
 import mbrl.util.math
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
-from mbrl.util.fetch_demos import fetch_demos
 
+from tqdm import tqdm
 import d4rl
 
 
@@ -126,7 +126,23 @@ def train(
         cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
     )
 
-    expert_dataset = fetch_demos(cfg.overrides.env)
+    is_maze = "maze" in cfg.overrides.env
+    if is_maze:
+        expert_dataset = d4rl.qlearning_dataset(env)
+
+    else:
+        expert = SACAgent(
+            cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
+        )
+        expert.sac_agent.load_checkpoint(
+            ckpt_path=os.path.join(
+                os.path.expanduser(
+                    "~/mbrl-lib/" + "expert/" + cfg.overrides.env.replace("gym___", "")
+                ),
+                "sac.pth",
+            ),
+            evaluate=True,
+        )
 
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
@@ -187,20 +203,40 @@ def train(
         action_type=dtype,
         reward_type=dtype,
     )
-    replay_buffer.add_batch(
-        expert_dataset["observations"][:1000],
-        expert_dataset["actions"][:1000],
-        expert_dataset["next_observations"][:1000],
-        expert_dataset["rewards"][:1000],
-        expert_dataset["terminals"][:1000],
-    )
-    expert_replay_buffer.add_batch(
-        expert_dataset["observations"][: cfg.overrides.expert_size],
-        expert_dataset["actions"][: cfg.overrides.expert_size],
-        expert_dataset["next_observations"][: cfg.overrides.expert_size],
-        expert_dataset["rewards"][: cfg.overrides.expert_size],
-        expert_dataset["terminals"][: cfg.overrides.expert_size],
-    )
+    if is_maze:
+        replay_buffer.add_batch(
+            expert_dataset["observations"][:1000],
+            expert_dataset["actions"][:1000],
+            expert_dataset["next_observations"][:1000],
+            expert_dataset["rewards"][:1000],
+            expert_dataset["terminals"][:1000],
+        )
+        expert_replay_buffer.add_batch(
+            expert_dataset["observations"][: cfg.overrides.expert_size],
+            expert_dataset["actions"][: cfg.overrides.expert_size],
+            expert_dataset["next_observations"][: cfg.overrides.expert_size],
+            expert_dataset["rewards"][: cfg.overrides.expert_size],
+            expert_dataset["terminals"][: cfg.overrides.expert_size],
+        )
+    else:
+        expert_rewards = mbrl.util.common.rollout_agent_trajectories(
+            env,
+            1000,
+            expert,
+            {"sample": True, "batched": False},
+            replay_buffer=replay_buffer,
+            additional_buffer=expert_replay_buffer,
+        )
+        print(np.mean(expert_rewards))
+
+        expert_rewards = mbrl.util.common.rollout_agent_trajectories(
+            env,
+            cfg.overrides.expert_size,
+            expert,
+            {"sample": True, "batched": False},
+            replay_buffer=expert_replay_buffer,
+            additional_buffer=None,
+        )
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
@@ -224,6 +260,7 @@ def train(
     best_eval_reward = -np.inf
     epoch = 0
     sac_buffer = None
+    tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
             mbrl.util.math.truncated_linear(
@@ -294,7 +331,6 @@ def train(
             # --------------- Agent Training -----------------
             for _ in range(cfg.overrides.num_sac_updates_per_step):
                 use_real_data = rng.random() < cfg.algorithm.real_data_ratio
-                # ! in the existing configs, use_real_data is always False because real_data_ratio == 0.0
                 which_buffer = replay_buffer if use_real_data else sac_buffer
                 if (env_steps + 1) % cfg.overrides.sac_updates_every_steps != 0 or len(
                     which_buffer
@@ -314,8 +350,7 @@ def train(
                     logger.dump(updates_made, save=True)
 
             # ------ Epoch ended (evaluate and save model) ------
-            # if (env_steps + 1) % cfg.overrides.epoch_length == 0:
-            if (env_steps + 1) % (5 * cfg.overrides.epoch_length) == 0:
+            if (env_steps + 1) % cfg.overrides.epoch_length == 0:
                 avg_reward = evaluate(
                     test_env, agent, cfg.algorithm.num_eval_episodes, video_recorder
                 )
@@ -336,6 +371,7 @@ def train(
                     )
                 epoch += 1
 
+            tbar.update(1)
             env_steps += 1
             obs = next_obs
     return np.float32(best_eval_reward)
