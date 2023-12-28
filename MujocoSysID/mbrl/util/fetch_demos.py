@@ -12,6 +12,8 @@ EPS = 1e-6
 
 def fetch_demos(env_name):
     env_name = env_name.replace("gym___", "")
+    if "truncated" in env_name.lower():
+        env_name = f"{env_name.split('_')[0].capitalize()}-v3"
     if "maze" in env_name:
         e = gym.make(env_name)
         dataset = e.get_dataset()
@@ -117,6 +119,19 @@ def fetch_demos(env_name):
                 dataset[key] = np.clip(
                     dataset[key], -1 + EPS, 1 - EPS
                 )  # due to tanh in TD3
+
+    if "ant" in env_name.lower() or "humanoid" in env_name.lower():
+        # get qpos and qvel dimensions
+        print(f"Old dataset shape: {dataset['observations'].shape}")
+        env = gym.make(env_name)
+        qpos, qvel = env.sim.data.qpos.ravel().copy(), env.sim.data.qvel.ravel().copy()
+        qpos_dim, qvel_dim = qpos.shape[0], qvel.shape[0]
+        obs_dim = (
+            qpos_dim + qvel_dim - 2
+        )  # truncated obs ignores first 2 elements of qpos
+        dataset["observations"] = dataset["observations"][:, :obs_dim]
+        dataset["next_observations"] = dataset["next_observations"][:, :obs_dim]
+        print(f"New dataset shape: {dataset['observations'].shape}")
 
     print("-" * 80)
     print(f"{dataset_path=}")

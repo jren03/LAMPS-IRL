@@ -23,18 +23,18 @@ def run(cfg: omegaconf.DictConfig):
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
     if cfg.algorithm.name == "pets":
-        return pets.train(env, term_fn, reward_fn, cfg)
+        return pets.train(env, term_fn, reward_fn, cfg, silent=cfg.silent)
     if cfg.algorithm.name == "mbpo":
         test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
-        return mbpo.train(env, test_env, term_fn, cfg)
+        return mbpo.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     if cfg.algorithm.name == "planet":
-        return planet.train(env, cfg)
+        return planet.train(env, cfg, silent=cfg.silent)
     if cfg.algorithm.name == "lamps":
         test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
-        return lamps.train(env, test_env, term_fn, cfg)
+        return lamps.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     if cfg.algorithm.name == "sysid":
         test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
-        return sysid.train(env, test_env, term_fn, cfg)
+        return sysid.train(env, test_env, term_fn, cfg, silent=cfg.silent)
 
 
 if __name__ == "__main__":

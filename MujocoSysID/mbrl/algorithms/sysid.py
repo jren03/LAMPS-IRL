@@ -23,6 +23,7 @@ from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
 from mbrl.util.fetch_demos import fetch_demos
 
+from tqdm import tqdm
 import d4rl
 
 
@@ -224,6 +225,7 @@ def train(
     best_eval_reward = -np.inf
     epoch = 0
     sac_buffer = None
+    tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
             mbrl.util.math.truncated_linear(
@@ -284,12 +286,12 @@ def train(
                         f"Rollout length: {rollout_length}. "
                         f"Steps: {env_steps}"
                     )
-                print(
-                    f"Epoch: {epoch}. "
-                    f"SAC buffer size: {len(sac_buffer)}. "
-                    f"Rollout length: {rollout_length}. "
-                    f"Steps: {env_steps}"
-                )
+                # print(
+                #     f"Epoch: {epoch}. "
+                #     f"SAC buffer size: {len(sac_buffer)}. "
+                #     f"Rollout length: {rollout_length}. "
+                #     f"Steps: {env_steps}"
+                # )
 
             # --------------- Agent Training -----------------
             for _ in range(cfg.overrides.num_sac_updates_per_step):
@@ -315,7 +317,7 @@ def train(
 
             # ------ Epoch ended (evaluate and save model) ------
             # if (env_steps + 1) % cfg.overrides.epoch_length == 0:
-            if (env_steps + 1) % (5 * cfg.overrides.epoch_length) == 0:
+            if (env_steps + 1) % cfg.overrides.epoch_length == 0:
                 avg_reward = evaluate(
                     test_env, agent, cfg.algorithm.num_eval_episodes, video_recorder
                 )
@@ -336,6 +338,7 @@ def train(
                     )
                 epoch += 1
 
+            tbar.update(1)
             env_steps += 1
             obs = next_obs
     return np.float32(best_eval_reward)
