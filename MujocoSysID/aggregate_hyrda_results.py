@@ -1,5 +1,6 @@
 from pathlib import Path
 from argparse import ArgumentParser
+from print_colors import PrintColors
 import pandas as pd
 import shutil
 import os
@@ -12,6 +13,7 @@ def is_non_zero_file(fpath):
 
 def main(env_name, override, partition, date):
     algs = ["lamps", "sysid", "mbpo"]
+    target_entries = 150
 
     for alg in algs:
         base_dir = Path("exp", alg, partition, env_name)
@@ -35,12 +37,20 @@ def main(env_name, override, partition, date):
             try:
                 df = pd.read_csv(results_file)
             except Exception as e:
-                print(f"Error reading {results_file}: {e}")
+                print(
+                    f"{PrintColors.FAIL}Error reading {results_file}: {e}{PrintColors.ENDC}"
+                )
                 continue
 
-            if not is_non_zero_file(results_file) or (len(df) < 75 and len(df) != 30):
-                print(f"Skipping {results_file} because it has {len(df)} entries")
+            if len(df) < target_entries - 20:
+                print(
+                    f"{PrintColors.FAIL}Skipping {results_file} because it has {len(df)} entries{PrintColors.ENDC}"
+                )
                 continue
+            elif len(df) < target_entries:
+                print(
+                    f"{PrintColors.WARNING}Note: {results_file} has {len(df)} entries, which is less than {target_entries}{PrintColors.ENDC}"
+                )
 
             # Look into .hydra directory for the hydra.yml file
             config_yaml = Path(subdir, ".hydra", "config.yaml")
@@ -78,14 +88,15 @@ if __name__ == "__main__":
 
     env_abbr = args.env_name
     if env_abbr == "ant":
-        env_name = "Ant-v3"
+        env_name = "ant_truncated_obs"
     elif env_abbr == "hc":
         env_name = "HalfCheetah-v3"
     elif env_abbr == "hop":
         env_name = "Hopper-v3"
     elif env_abbr == "hum":
-        env_name = "Humanoid-v3"
+        env_name = "humanoid_truncated_obs"
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
-    env_name = f"gym___{env_name}"
+    if "truncated" not in env_name:
+        env_name = f"gym___{env_name}"
     main(env_name, args.override, args.p, args.d)

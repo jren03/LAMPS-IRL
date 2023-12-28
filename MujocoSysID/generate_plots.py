@@ -91,17 +91,25 @@ def main(env_abbrv, env_name):
                 label=algs_to_labels[alg],
             )
         else:
-            if alg == "mbpo":
-                steps = 150
-                sz = 4000
-            else:
-                steps = 30
-                sz = 10000
+            # if alg == "mbpo":
+            #     steps = 125
+            #     sz = 2000
+            # else:
+            #     steps = 124
+            #     sz = 2000
             csvs = [f for f in csv_results_dir.glob("*.csv") if alg in f.name]
             scores = []
             for csv in csvs:
                 data = pd.read_csv(csv).episode_reward.to_numpy()
-                scores.append(data)
+                if len(data) >= steps:
+                    scores.append(data[:steps])
+                else:
+                    # extend last value to steps
+                    print(f"Extending {alg} from {len(data)} to", end=" ")
+                    scores.append(
+                        np.concatenate([data, np.ones(steps - len(data)) * data[-1]])
+                    )
+                    print(f"{len(scores[-1])}")
             if scores == []:
                 print(f"Skipping {alg}")
                 continue
@@ -114,7 +122,7 @@ def main(env_abbrv, env_name):
                 np.arange(steps) * sz,
                 mean,
                 color=algs_to_colors[alg],
-                label=algs_to_labels[alg],
+                label=f"{algs_to_labels[alg]}: {len(scores)} runs",
             )
             plt.fill_between(
                 np.arange(steps) * sz,
@@ -149,14 +157,15 @@ if __name__ == "__main__":
 
     env_abbr = args.env_name
     if env_abbr == "ant":
-        env_name = "Ant-v3"
+        env_name = "ant_truncated_obs"
     elif env_abbr == "hc":
         env_name = "HalfCheetah-v3"
     elif env_abbr == "hop":
         env_name = "Hopper-v3"
     elif env_abbr == "hum":
-        env_name = "Humanoid-v3"
+        env_name = "humanoid_truncated_obs"
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
-    env_name = f"gym___{env_name}"
+    if "truncated" not in env_name:
+        env_name = f"gym___{env_name}"
     main(env_abbr, env_name)
