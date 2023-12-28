@@ -21,6 +21,7 @@ import mbrl.util.common
 import mbrl.util.math
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
+from tqdm import tqdm
 
 MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("epoch", "E", "int"),
@@ -50,12 +51,14 @@ def rollout_model_and_populate_sac_buffer(
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
         )
+        # truncateds = np.zeros_like(pred_dones, dtype=bool)
         sac_buffer.add_batch(
             obs[~accum_dones],
             action[~accum_dones],
             pred_next_obs[~accum_dones],
             pred_rewards[~accum_dones, 0],
             pred_dones[~accum_dones, 0],
+            # truncateds[~accum_dones, 0],
         )
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
@@ -66,29 +69,23 @@ def evaluate(
     agent: SACAgent,
     num_episodes: int,
     video_recorder: VideoRecorder,
-    maze=False,
 ) -> float:
-    avg_episode_reward = 0
-
-    success = 0
-
+    avg_episode_reward = 0.0
     for episode in range(num_episodes):
         obs = env.reset()
         video_recorder.init(enabled=(episode == 0))
+        # terminated = False
+        # truncated = False
         done = False
-        episode_reward = 0
+        episode_reward = 0.0
+        # while not terminated and not truncated:
         while not done:
             action = agent.act(obs)
+            # obs, reward, terminated, truncated, _ = env.step(action)
             obs, reward, done, _ = env.step(action)
             video_recorder.record(env)
             episode_reward += reward
-        if maze:
-            success += episode_reward > 0
-            avg_episode_reward += episode_reward
-        else:
-            avg_episode_reward += episode_reward
-    if maze:
-        return avg_episode_reward / num_episodes, success / num_episodes
+        avg_episode_reward += episode_reward
     return avg_episode_reward / num_episodes
 
 
@@ -107,7 +104,16 @@ def maybe_replace_sac_buffer(
         new_buffer = mbrl.util.ReplayBuffer(new_capacity, obs_shape, act_shape, rng=rng)
         if sac_buffer is None:
             return new_buffer
-        obs, action, next_obs, reward, done = sac_buffer.get_all().astuple()
+        (
+            obs,
+            action,
+            next_obs,
+            reward,
+            done,
+            # terminated,
+            # truncated,
+        ) = sac_buffer.get_all().astuple()
+        # new_buffer.add_batch(obs, action, next_obs, reward, terminated, truncated)
         new_buffer.add_batch(obs, action, next_obs, reward, done)
         return new_buffer
     return sac_buffer
@@ -193,6 +199,7 @@ def train(
     best_eval_reward = -np.inf
     epoch = 0
     sac_buffer = None
+    tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
             mbrl.util.math.truncated_linear(
@@ -205,16 +212,23 @@ def train(
             sac_buffer, obs_shape, act_shape, sac_buffer_capacity, cfg.seed
         )
         obs = None
-        terminated = False
-        truncated = False
+        # terminated = False
+        # truncated = False
+        done = False
         for steps_epoch in range(cfg.overrides.epoch_length):
-            if steps_epoch == 0 or terminated or truncated:
-                obs, done = env.reset(), False
+            if steps_epoch == 0 or done:
+                steps_epoch = 0
+                obs = env.reset()
+                done = False
+                # terminated = False
+                # truncated = False
             # --- Doing env step and adding to model dataset ---
             (
                 next_obs,
                 reward,
                 done,
+                # terminated,
+                # truncated,
                 _,
             ) = mbrl.util.common.step_env_and_add_to_buffer(
                 env, obs, agent, {}, replay_buffer
@@ -271,8 +285,7 @@ def train(
                     logger.dump(updates_made, save=True)
 
             # ------ Epoch ended (evaluate and save model) ------
-            # if (env_steps + 1) % cfg.overrides.epoch_length == 0:
-            if (env_steps + 1) % (2 * cfg.overrides.epoch_length) == 0:
+            if (env_steps + 1) % cfg.overrides.epoch_length == 0:
                 avg_reward = evaluate(
                     test_env, agent, cfg.algorithm.num_eval_episodes, video_recorder
                 )
@@ -293,6 +306,7 @@ def train(
                     )
                 epoch += 1
 
+            tbar.update(1)
             env_steps += 1
             obs = next_obs
     return np.float32(best_eval_reward)
