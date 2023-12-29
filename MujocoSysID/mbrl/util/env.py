@@ -15,6 +15,7 @@ import torch
 
 import mbrl.planning
 import mbrl.types
+from mbrl.env.shaky_hands import TremblingHandWrapper
 
 
 def _get_term_and_reward_fn(
@@ -97,6 +98,23 @@ def _legacy_make_env(
         )
 
     env, reward_fn = _handle_learned_rewards_and_seed(cfg, env, reward_fn)
+
+    if cfg.shaky:
+        env_name = cfg.overrides.env.lower()
+        if "ant" in env_name:
+            p_tremble = 0.01
+        elif "cheetah" in env_name:
+            p_tremble = 0.075
+        elif "hopper" in env_name:
+            p_tremble = 0.01
+        elif "humanoid" in env_name:
+            p_tremble = 0.025
+        elif "walker" in env_name:
+            p_tremble = 0.05
+        else:
+            raise ValueError(f"Invalid environment: {env_name}")
+        env = TremblingHandWrapper(env, p_tremble=p_tremble)
+
     return env, term_fn, reward_fn
 
 

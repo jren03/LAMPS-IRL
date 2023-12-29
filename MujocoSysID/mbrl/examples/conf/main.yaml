@@ -10,6 +10,7 @@ save_video: false
 debug_mode: false
 
 silent: true
+shaky: true
 
 experiment: default
 seed: 1
@@ -18,7 +19,7 @@ seed: 1
 root_dir: "./exp"
 hydra:
   run:
-    dir: ${root_dir}/${algorithm.name}/${experiment}/${overrides.env}/${now:%Y.%m.%d}/${now:%H%M%S}
+    dir: ${root_dir}/${algorithm.name}/${experiment}/${overrides.env}/${now:%m.%d}/${now:%H%M%S}-seed${seed}
 
   sweep:
-    dir: ${root_dir}/${algorithm.name}/${experiment}/${overrides.env}/${now:%Y.%m.%d}/${now:%H%M%S}
+    dir: ${root_dir}/${algorithm.name}/${experiment}/${overrides.env}/${now:%m.%d}/${now:%H%M%S}-seed${seed}

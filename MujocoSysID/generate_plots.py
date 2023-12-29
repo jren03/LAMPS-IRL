@@ -80,7 +80,7 @@ def main(env_abbrv, env_name):
     }
 
     steps = 150
-    sz = 2000
+    sz = 1000
     for alg in algs_to_colors.keys():
         if alg == "exp":
             plt.plot(
