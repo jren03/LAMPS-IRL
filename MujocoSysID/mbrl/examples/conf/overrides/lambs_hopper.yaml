@@ -7,7 +7,8 @@ expert_dir: "expert/hopper"
 model_exp_ratio: 0.0
 policy_exp_ratio: 0
 
-expert_size: 10000
+# expert_size: 10000
+expert_size: 64000
 
 
 num_steps: 150000
@@ -19,10 +20,10 @@ model_wd: 0.00001
 model_batch_size: 256
 validation_ratio: 0.2
 freq_train_model: 250
-effective_model_rollouts_per_step: 100 #400
+effective_model_rollouts_per_step: 400 #400
 rollout_schedule: [20, 150, 1, 15]
 #rollout_schedule: [20, 150, 1, 1]
-num_sac_updates_per_step: 20 #20
+num_sac_updates_per_step: 40 #20
 sac_updates_every_steps: 1
 num_epochs_to_retain_sac_buffer: 1
 

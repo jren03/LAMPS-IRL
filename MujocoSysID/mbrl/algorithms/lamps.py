@@ -214,6 +214,7 @@ def train(
         expert_dataset["rewards"][: cfg.overrides.expert_size],
         expert_dataset["terminals"][: cfg.overrides.expert_size],
     )
+    print("Expert buffer size: ", cfg.overrides.expert_size)
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------

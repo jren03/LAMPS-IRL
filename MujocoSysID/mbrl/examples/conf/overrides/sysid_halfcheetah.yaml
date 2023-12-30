@@ -5,7 +5,8 @@ term_fn: "no_termination"
 expert_dir: "expert/halfcheetah"
 
 model_exp_ratio: 0
-expert_size: 10000
+# expert_size: 10000
+expert_size: 64000
 
 
 num_steps: 150000

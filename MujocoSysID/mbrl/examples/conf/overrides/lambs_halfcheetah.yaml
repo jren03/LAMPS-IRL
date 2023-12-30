@@ -7,7 +7,8 @@ expert_dir: "expert/halfcheetah"
 model_exp_ratio: 0
 policy_exp_ratio: 0
 
-expert_size: 10000
+# expert_size: 10000
+expert_size: 64000
 
 num_steps: 150000
 epoch_length: 1000
@@ -20,7 +21,6 @@ validation_ratio: 0.2
 freq_train_model: 250
 effective_model_rollouts_per_step: 400 #400
 rollout_schedule: [20, 150, 1, 1]
-#rollout_schedule: [10, 50, 1, 1]
 num_sac_updates_per_step: 20 #5 #10
 sac_updates_every_steps: 1
 num_epochs_to_retain_sac_buffer: 1

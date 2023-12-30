@@ -8,7 +8,8 @@ expert_dir: "expert/walker"
 model_exp_ratio: 0.0
 policy_exp_ratio: 0
 
-expert_size: 10000
+# expert_size: 10000
+expert_size: 64000
 
 
 num_steps: 150000

@@ -5,7 +5,8 @@ term_fn: "hopper"
 expert_dir: "expert/hopper"
 
 model_exp_ratio: 0.0
-expert_size: 10000
+# expert_size: 10000
+expert_size: 64000
 
 
 
@@ -21,7 +22,7 @@ freq_train_model: 250
 effective_model_rollouts_per_step: 800 #400
 rollout_schedule: [20, 150, 1, 15]
 #rollout_schedule: [20, 150, 1, 1]
-num_sac_updates_per_step: 30 #20
+num_sac_updates_per_step: 80 #20
 sac_updates_every_steps: 1
 num_epochs_to_retain_sac_buffer: 1
 
