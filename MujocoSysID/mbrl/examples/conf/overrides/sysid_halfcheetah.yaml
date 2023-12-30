@@ -9,7 +9,8 @@ model_exp_ratio: 0
 expert_size: 64000
 
 
-num_steps: 150000
+# num_steps: 150000
+num_steps: 100000
 epoch_length: 1000
 num_elites: 5
 patience: 5

@@ -13,7 +13,7 @@ sac_samples_action: true
 initial_exploration_steps: 10000
 expert_steps: 100000
 random_initial_explore: false
-num_eval_episodes: 1
+num_eval_episodes: 2
 
 # --------------------------------------------
 #          SAC Agent configuration
