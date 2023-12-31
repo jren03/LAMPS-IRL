@@ -19,7 +19,9 @@ class TremblingHandWrapper(gym.Wrapper):
         super().__init__(env)
         self.env = env
         self.p_tremble = p_tremble
-        print(f"{PrintColors.OKBLUE}{p_tremble=}{PrintColors.ENDC}")
+        print(
+            f"{PrintColors.OKBLUE}{str(self.env).split()[0].rsplit('<', 1)[1]} {p_tremble=}{PrintColors.ENDC}"
+        )
 
     def reset(self):
         return self.env.reset()

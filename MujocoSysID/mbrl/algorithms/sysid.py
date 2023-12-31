@@ -33,6 +33,18 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
 ]
 
 
+class PrintColors:
+    HEADER = "\033[95m"
+    OKBLUE = "\033[94m"
+    OKCYAN = "\033[96m"
+    OKGREEN = "\033[92m"
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
+
+
 def rollout_model_and_populate_sac_buffer(
     model_env: mbrl.models.ModelEnv,
     replay_buffer: mbrl.util.ReplayBuffer,
@@ -195,14 +207,25 @@ def train(
         expert_dataset["rewards"][:1000],
         expert_dataset["terminals"][:1000],
     )
-    expert_replay_buffer.add_batch(
-        expert_dataset["observations"][: cfg.overrides.expert_size],
-        expert_dataset["actions"][: cfg.overrides.expert_size],
-        expert_dataset["next_observations"][: cfg.overrides.expert_size],
-        expert_dataset["rewards"][: cfg.overrides.expert_size],
-        expert_dataset["terminals"][: cfg.overrides.expert_size],
-    )
-    print("Expert buffer size: ", cfg.overrides.expert_size)
+    if cfg.from_end:
+        print(f"{PrintColors.OKBLUE}Adding from end of expert dataset")
+        expert_replay_buffer.add_batch(
+            expert_dataset["observations"][-cfg.overrides.expert_size :],
+            expert_dataset["actions"][-cfg.overrides.expert_size :],
+            expert_dataset["next_observations"][-cfg.overrides.expert_size :],
+            expert_dataset["rewards"][-cfg.overrides.expert_size :],
+            expert_dataset["terminals"][-cfg.overrides.expert_size :],
+        )
+    else:
+        print(f"{PrintColors.OKBLUE}Adding from end of expert dataset")
+        expert_replay_buffer.add_batch(
+            expert_dataset["observations"][: cfg.overrides.expert_size],
+            expert_dataset["actions"][: cfg.overrides.expert_size],
+            expert_dataset["next_observations"][: cfg.overrides.expert_size],
+            expert_dataset["rewards"][: cfg.overrides.expert_size],
+            expert_dataset["terminals"][: cfg.overrides.expert_size],
+        )
+    print(f"Expert buffer size: {cfg.overrides.expert_size}{PrintColors.ENDC}")
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------

@@ -13,7 +13,7 @@ def is_non_zero_file(fpath):
 
 def main(env_name, override, partition, date):
     algs = ["lamps", "sysid", "mbpo"]
-    target_entries = 150
+    target_entries = 100
 
     for alg in algs:
         base_dir = Path("exp", alg, partition, env_name)
@@ -26,7 +26,7 @@ def main(env_name, override, partition, date):
                     f.unlink()
 
         # loop through date/run_id/multi_run_num
-        for subdir in base_dir.glob(f"{date}/*/*"):
+        for subdir in base_dir.glob(f"{date}/*"):
             if not subdir.is_dir():
                 continue
             results_file = Path(subdir, "results.csv")
@@ -61,11 +61,16 @@ def main(env_name, override, partition, date):
                 try:
                     hydra_yml = yaml.safe_load(stream)
                     seed = hydra_yml.get("seed")
+                    shaky = hydra_yml.get("shaky")
                 except yaml.YAMLError as exc:
                     print(exc)
 
             # Copy the csv file to the csv_results directory
-            new_file_path = Path(csv_results_dir, f"{alg}_s{seed}.csv")
+            if shaky:
+                new_file_path = Path(csv_results_dir, f"{alg}_s{seed}_shaky.csv")
+            else:
+                new_file_path = Path(csv_results_dir, f"{alg}_s{seed}.csv")
+
             if new_file_path.exists():
                 continue
             shutil.copy(results_file, new_file_path)

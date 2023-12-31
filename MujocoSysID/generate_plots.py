@@ -78,8 +78,16 @@ def main(env_abbrv, env_name):
         # "hum": 5708.24,
         # "walk": 5740.80,
     }
+    env_name_to_ptremble = {
+        "ant": 0.01,
+        "hc": 0.075,
+        "hop": 0.01,
+        "walk": 0.05,
+        "hum": 0.025,
+    }
 
-    steps = 150
+    # steps = 150
+    steps = 100
     sz = 1000
     for alg in algs_to_colors.keys():
         if alg == "exp":
@@ -91,16 +99,11 @@ def main(env_abbrv, env_name):
                 label=algs_to_labels[alg],
             )
         else:
-            # if alg == "mbpo":
-            #     steps = 125
-            #     sz = 2000
-            # else:
-            #     steps = 124
-            #     sz = 2000
             csvs = [f for f in csv_results_dir.glob("*.csv") if alg in f.name]
             scores = []
             for csv in csvs:
                 data = pd.read_csv(csv).episode_reward.to_numpy()
+                shaky = "shaky" in csv.name
                 if len(data) >= steps:
                     scores.append(data[:steps])
                 else:
@@ -133,12 +136,17 @@ def main(env_abbrv, env_name):
             )
             print(f"Plotting {alg} with {len(scores)} runs")
 
+    if shaky:
+        p_tremble = env_name_to_ptremble[env_abbrv]
+    else:
+        p_tremble = 0
+
     env_name = env_name.replace("gym___", "")
     plt.legend(ncol=2, fontsize=8)
     plt.ylabel("IQM of $J(\\pi)$")
     plt.xlabel("Env. Steps")
     plt.xticks(rotation=45)
-    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(0))
+    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble))
     plt.savefig(f"plots/{env_name}.png", bbox_inches="tight")
     print("SAVED")
 
