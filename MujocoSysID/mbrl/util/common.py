@@ -5,6 +5,7 @@
 import pathlib
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
 
+import torch
 import gym.wrappers
 import hydra
 import numpy as np
@@ -14,6 +15,8 @@ import mbrl.models
 import mbrl.planning
 import mbrl.types
 
+from torch.autograd import Variable
+from torch.autograd import grad as torch_grad
 from .replay_buffer import (
     BootstrapIterator,
     ReplayBuffer,
@@ -109,6 +112,7 @@ def create_one_dim_tr_model(
 
     return dynamics_model
 
+
 def create_one_dim_tr_model_value(
     cfg: omegaconf.DictConfig,
     obs_shape: Tuple[int, ...],
@@ -194,6 +198,7 @@ def create_one_dim_tr_model_value(
         dynamics_model.load(model_dir)
 
     return dynamics_model
+
 
 def load_hydra_cfg(results_dir: Union[str, pathlib.Path]) -> omegaconf.DictConfig:
     """Loads a Hydra configuration from the given directory path.
@@ -497,12 +502,13 @@ def train_model_and_save_model_and_data(
         model.save(str(work_dir))
         replay_buffer.save(work_dir)
 
+
 def value_train_model_and_save_model_and_data(
     model: mbrl.models.Model,
     model_trainer: mbrl.models.ModelTrainer,
     cfg: omegaconf.DictConfig,
     replay_buffer: ReplayBuffer,
-    agent, 
+    agent,
     work_dir: Optional[Union[str, pathlib.Path]] = None,
     callback: Optional[Callable] = None,
 ):
@@ -551,7 +557,6 @@ def value_train_model_and_save_model_and_data(
     if work_dir is not None:
         model.save(str(work_dir))
         replay_buffer.save(work_dir)
-
 
 
 def rollout_model_env(
@@ -748,3 +753,29 @@ def step_env_and_add_to_buffer(
     if callback:
         callback((obs, action, next_obs, reward, done))
     return next_obs, reward, done, info
+
+
+def gradient_penalty(learner_sa, expert_sa, f, device="cuda"):
+    batch_size = expert_sa.size()[0]
+
+    alpha = torch.rand(batch_size, 1).to(device)
+    alpha = alpha.expand_as(expert_sa)
+
+    interpolated = alpha * expert_sa.data + (1 - alpha) * learner_sa.data
+
+    interpolated = Variable(interpolated, requires_grad=True).to(device)
+
+    f_interpolated = f(interpolated.float()).to(device)
+
+    gradients = torch_grad(
+        outputs=f_interpolated,
+        inputs=interpolated,
+        grad_outputs=torch.ones(f_interpolated.size()).to(device),
+        create_graph=True,
+        retain_graph=True,
+    )[0].to(device)
+
+    gradients = gradients.view(batch_size, -1)
+    gradients_norm = torch.sqrt(torch.sum(gradients**2, dim=1) + 1e-12)
+    # 2 * |f'(x_0)|
+    return ((gradients_norm - 0.4) ** 2).mean()

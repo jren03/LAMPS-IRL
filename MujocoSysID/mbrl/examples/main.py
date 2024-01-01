@@ -20,8 +20,6 @@ import mbrl.util.env
 @hydra.main(config_path="conf", config_name="main")
 def run(cfg: omegaconf.DictConfig):
     env, term_fn, reward_fn = mbrl.util.env.EnvHandler.make_env(cfg)
-    print(reward_fn)
-    exit()
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
     if cfg.algorithm.name == "pets":

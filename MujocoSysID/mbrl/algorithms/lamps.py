@@ -22,6 +22,9 @@ import mbrl.util.math
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
 from mbrl.util.fetch_demos import fetch_demos
+from mbrl.models.discriminator import Discriminator
+from mbrl.util.oadam import OAdam
+from mbrl.util.common import gradient_penalty
 
 import d4rl
 from tqdm import tqdm
@@ -85,9 +88,7 @@ def evaluate(
     maze=False,
 ) -> float:
     avg_episode_reward = 0
-
     success = 0
-
     for episode in range(num_episodes):
         obs = env.reset()
         video_recorder.init(enabled=(episode == 0))
@@ -106,6 +107,25 @@ def evaluate(
     if maze:
         return avg_episode_reward / num_episodes, success / num_episodes
     return avg_episode_reward / num_episodes
+
+
+def sample(
+    env: gym.Env,
+    agent: SACAgent,
+    num_episodes: int,
+) -> float:
+    states, actions = [], []
+    env_steps = 0
+    for episode in range(num_episodes):
+        obs = env.reset()
+        done = False
+        while not done:
+            states.append(obs)
+            action = agent.act(obs)
+            actions.append(action)
+            obs, _, done, _ = env.step(action)
+            env_steps += 0
+    return states, actions, env_steps
 
 
 def maybe_replace_sac_buffer(
@@ -248,9 +268,22 @@ def train(
     )
     updates_made = 0
     env_steps = 0
-    model_env = mbrl.models.ModelEnv(
-        env, dynamics_model, termination_fn, None, generator=torch_generator
-    )
+    if cfg.train_discriminator:
+        print(
+            f"{PrintColors.OKBLUE}Training with discriminator function{PrintColors.ENDC}"
+        )
+        f_net = Discriminator(env, n_hidden=cfg.disc.n_hidden).to(cfg.device)
+        f_opt = OAdam(f_net.parameters(), lr=cfg.disc.lr)
+        model_env = mbrl.models.ModelEnv(
+            env, dynamics_model, termination_fn, f_net, generator=torch_generator
+        )
+    else:
+        print(
+            f"{PrintColors.OKBLUE}Training with ground truth rewards{PrintColors.ENDC}"
+        )
+        model_env = mbrl.models.ModelEnv(
+            env, dynamics_model, termination_fn, None, generator=torch_generator
+        )
     model_trainer = mbrl.models.ModelTrainer(
         dynamics_model,
         optim_lr=cfg.overrides.model_lr,
@@ -259,6 +292,7 @@ def train(
     )
     best_eval_reward = -np.inf
     epoch = 0
+    disc_steps = 0
     sac_buffer = None
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
@@ -417,4 +451,33 @@ def train(
             tbar.update(1)
             env_steps += 1
             obs = next_obs
+
+        # ------ Discriminator Training ------
+        if cfg.train_discriminator and updates_made % cfg.disc.freq_train_disc == 0:
+            if not disc_steps == 0:
+                learning_rate_used = cfg.disc.lr / disc_steps
+            else:
+                learning_rate_used = cfg.disc.lr
+            f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
+
+            S_curr, A_curr, s = sample(test_env, agent, cfg.disc.num_traj_samples)
+            learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
+            env_steps += s
+            tbar.update(s)
+            for _ in range(cfg.disc.num_updates_per_step):
+                # np.random.choice samples with replacement
+                learner_sa = learner_sa_pairs[
+                    np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
+                ]
+                expert_sa = expert_sa_pairs[
+                    np.random.choice(len(expert_sa_pairs), cfg.disc.batch_size)
+                ]
+                f_opt.zero_grad()
+                f_learner = f_net(learner_sa.float())
+                f_expert = f_net(expert_sa.float())
+                gp = gradient_penalty(learner_sa, expert_sa, f_net)
+                loss = f_expert.mean() - f_learner.mean() + 10 * gp
+                loss.backward()
+                f_opt.step()
+
     return np.float32(best_eval_reward)
