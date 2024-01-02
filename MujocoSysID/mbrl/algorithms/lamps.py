@@ -87,11 +87,11 @@ def evaluate(
             obs, reward, done, _ = env.step(action)
             video_recorder.record(env)
             episode_reward += reward
-        if maze:
-            success += episode_reward > 0
-            avg_episode_reward += episode_reward
-        else:
-            avg_episode_reward += episode_reward
+            if maze:
+                success += episode_reward > 0
+                avg_episode_reward += episode_reward
+            else:
+                avg_episode_reward += episode_reward
     if maze:
         return avg_episode_reward / num_episodes, success / num_episodes
     return avg_episode_reward / num_episodes
@@ -215,7 +215,6 @@ def train(
     )
 
     # ------------ Fill expert buffer ---------------------
-
     expert_replay_buffer = mbrl.util.common.create_replay_buffer(
         cfg,
         obs_shape,

@@ -15,7 +15,7 @@ import torch
 
 import mbrl.planning
 import mbrl.types
-from mbrl.env.shaky_hands import TremblingHandWrapper
+from mbrl.env.gym_wrappers import TremblingHandWrapper, GoalWrapper
 
 
 def _get_term_and_reward_fn(
@@ -99,8 +99,11 @@ def _legacy_make_env(
 
     env, reward_fn = _handle_learned_rewards_and_seed(cfg, env, reward_fn)
 
+    env_name = cfg.overrides.env.lower()
+    if "maze" in env_name:
+        env = GoalWrapper(env)
+
     if cfg.shaky:
-        env_name = cfg.overrides.env.lower()
         if "ant" in env_name:
             p_tremble = 0.01
         elif "cheetah" in env_name:
@@ -111,6 +114,8 @@ def _legacy_make_env(
             p_tremble = 0.025
         elif "walker" in env_name:
             p_tremble = 0.05
+        elif "maze" in env_name:
+            p_tremble = 0.0
         else:
             raise ValueError(f"Invalid environment: {env_name}")
         env = TremblingHandWrapper(env, p_tremble=p_tremble)

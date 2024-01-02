@@ -73,6 +73,15 @@ def fetch_demos(env_name, zero_out_rewards=True):
                 for exp_range in exp_ranges
             ]
         )
+        goals = np.array(
+            [
+                dataset["infos/goal"][exp_range[0] : exp_range[1] - 1]
+                for exp_range in exp_ranges
+            ]
+        )
+        goals_flattened = np.array([g for traj in goals for g in traj])
+        obs = np.concatenate([obs, goals_flattened], axis=1)
+        next_obs = np.concatenate([next_obs, goals_flattened], axis=1)
         dataset = dict(
             observations=obs,
             actions=acts,
@@ -120,18 +129,21 @@ def fetch_demos(env_name, zero_out_rewards=True):
                     dataset[key], -1 + EPS, 1 - EPS
                 )  # due to tanh in TD3
 
-    if "ant" in env_name.lower() or "humanoid" in env_name.lower():
-        # get qpos and qvel dimensions
-        print(f"Old dataset shape: {dataset['observations'].shape}")
-        env = gym.make(env_name)
-        qpos, qvel = env.sim.data.qpos.ravel().copy(), env.sim.data.qvel.ravel().copy()
-        qpos_dim, qvel_dim = qpos.shape[0], qvel.shape[0]
-        obs_dim = (
-            qpos_dim + qvel_dim - 2
-        )  # truncated obs ignores first 2 elements of qpos
-        dataset["observations"] = dataset["observations"][:, :obs_dim]
-        dataset["next_observations"] = dataset["next_observations"][:, :obs_dim]
-        print(f"New dataset shape: {dataset['observations'].shape}")
+        if "ant" in env_name.lower() or "humanoid" in env_name.lower():
+            # get qpos and qvel dimensions
+            print(f"Old dataset shape: {dataset['observations'].shape}")
+            env = gym.make(env_name)
+            qpos, qvel = (
+                env.sim.data.qpos.ravel().copy(),
+                env.sim.data.qvel.ravel().copy(),
+            )
+            qpos_dim, qvel_dim = qpos.shape[0], qvel.shape[0]
+            obs_dim = (
+                qpos_dim + qvel_dim - 2
+            )  # truncated obs ignores first 2 elements of qpos
+            dataset["observations"] = dataset["observations"][:, :obs_dim]
+            dataset["next_observations"] = dataset["next_observations"][:, :obs_dim]
+            print(f"New dataset shape: {dataset['observations'].shape}")
 
     if zero_out_rewards:
         dataset["rewards"] = np.zeros_like(dataset["rewards"])
@@ -139,7 +151,9 @@ def fetch_demos(env_name, zero_out_rewards=True):
     print("-" * 80)
     print(f"{dataset_path=}")
     print(f"{dataset.keys()=}")
-    print(f"{np.mean(Js)=}\t{np.std(Js)=}\t{zero_out_rewards=}")
+    print(
+        f"{np.mean(dataset['rewards'])=}\t{np.mean(Js)=}\t{np.std(Js)=}\t{zero_out_rewards=}"
+    )
     print("-" * 80)
 
     return dataset
