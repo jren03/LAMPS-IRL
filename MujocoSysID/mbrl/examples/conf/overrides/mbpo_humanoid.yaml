@@ -2,6 +2,8 @@
 env: "humanoid_truncated_obs"
 # term_fn is set automatically by mbrl.util.env.EnvHandler.make_env
 
+expert_size: 64000
+
 # num_steps: 300000
 # num_steps: 150000
 num_steps: 100000

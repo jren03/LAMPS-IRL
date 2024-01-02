@@ -2,6 +2,8 @@
 env: "gym___Walker2d-v3"
 term_fn: "walker2d"
 
+expert_size: 64000
+
 # num_steps: 300000
 # num_steps: 150000
 num_steps: 100000

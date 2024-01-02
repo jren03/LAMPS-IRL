@@ -2,6 +2,8 @@
 env: "gym___Hopper-v3"
 term_fn: "hopper"
 
+expert_size: 64000
+
 # num_steps: 125000
 num_steps: 100000
 epoch_length: 1000
