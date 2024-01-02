@@ -24,7 +24,7 @@ from mbrl.third_party.pytorch_sac import VideoRecorder
 from mbrl.util.fetch_demos import fetch_demos
 from mbrl.models.discriminator import Discriminator
 from mbrl.util.oadam import OAdam
-from mbrl.util.common import gradient_penalty
+from mbrl.util.common import gradient_penalty, PrintColors
 
 import d4rl
 from tqdm import tqdm
@@ -33,18 +33,6 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("epoch", "E", "int"),
     ("rollout_length", "RL", "int"),
 ]
-
-
-class PrintColors:
-    HEADER = "\033[95m"
-    OKBLUE = "\033[94m"
-    OKCYAN = "\033[96m"
-    OKGREEN = "\033[92m"
-    WARNING = "\033[93m"
-    FAIL = "\033[91m"
-    ENDC = "\033[0m"
-    BOLD = "\033[1m"
-    UNDERLINE = "\033[4m"
 
 
 def rollout_model_and_populate_sac_buffer(
@@ -254,7 +242,7 @@ def train(
             expert_dataset["terminals"][-cfg.overrides.expert_size :],
         )
     else:
-        print(f"{PrintColors.OKBLUE}Adding from end of expert dataset")
+        print(f"{PrintColors.OKBLUE}Adding from beginning of expert dataset")
         expert_replay_buffer.add_batch(
             expert_dataset["observations"][: cfg.overrides.expert_size],
             expert_dataset["actions"][: cfg.overrides.expert_size],
@@ -358,13 +346,14 @@ def train(
                     rollout_batch_size,
                 )
 
+                # ----------------------- Discriminator Training with Model ----------
                 if cfg.update_with_model:
-                    print("UPDATE WITH MODEL")
                     if not disc_steps == 0:
                         learning_rate_used = cfg.disc.lr / disc_steps
                     else:
                         learning_rate_used = cfg.disc.lr
                     f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
+                    print(f"Update with model: {learning_rate_used}, {disc_steps}")
 
                     S_curr, A_curr, s = sample(
                         test_env, agent, cfg.disc.num_traj_samples
@@ -498,7 +487,7 @@ def train(
         if cfg.update_with_model:
             continue
         if cfg.train_discriminator and updates_made % cfg.disc.freq_train_disc == 0:
-            print("HEREEE")
+            print(f"Discriminator Training: {learning_rate_used}, {disc_steps}")
             if not disc_steps == 0:
                 learning_rate_used = cfg.disc.lr / disc_steps
             else:
