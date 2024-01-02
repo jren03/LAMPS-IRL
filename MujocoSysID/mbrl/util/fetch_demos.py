@@ -10,7 +10,7 @@ import pdb
 EPS = 1e-6
 
 
-def fetch_demos(env_name):
+def fetch_demos(env_name, zero_out_rewards=True):
     env_name = env_name.replace("gym___", "")
     if "truncated" in env_name.lower():
         env_name = f"{env_name.split('_')[0].capitalize()}-v3"
@@ -133,10 +133,13 @@ def fetch_demos(env_name):
         dataset["next_observations"] = dataset["next_observations"][:, :obs_dim]
         print(f"New dataset shape: {dataset['observations'].shape}")
 
+    if zero_out_rewards:
+        dataset["rewards"] = np.zeros_like(dataset["rewards"])
+
     print("-" * 80)
     print(f"{dataset_path=}")
     print(f"{dataset.keys()=}")
-    print(f"{np.mean(Js)=}\t{np.std(Js)=}")
+    print(f"{np.mean(Js)=}\t{np.std(Js)=}\t{zero_out_rewards=}")
     print("-" * 80)
 
     return dataset

@@ -124,8 +124,8 @@ class ModelEnv:
             rewards = (
                 pred_rewards
                 if self.reward_fn is None
-                else self.reward_fn(actions, next_observs)
-            )
+                else -self.reward_fn(torch.cat([model_state["obs"], actions], dim=-1))
+            ).reshape(pred_rewards.shape)
             dones = self.termination_fn(actions, next_observs)
 
             if pred_terminals is not None:

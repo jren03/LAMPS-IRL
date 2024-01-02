@@ -273,7 +273,7 @@ class SequenceTransitionIterator(BootstrapIterator):
         # iterator. It's a good price to pay for now, since it simplifies things
         # enormously and it's less error prone
         valid_starts = []
-        for (start, end) in trajectory_indices:
+        for start, end in trajectory_indices:
             if end - start < sequence_length:
                 continue
             valid_starts.extend(list(range(start, end - sequence_length + 1)))
@@ -368,7 +368,7 @@ class SequenceTransitionSampler(TransitionIterator):
         # iterator. It's a good price to pay for now, since it simplifies things
         # enormously and it's less error prone
         valid_starts = []
-        for (start, end) in trajectory_indices:
+        for start, end in trajectory_indices:
             if end - start < sequence_length:
                 continue
             valid_starts.extend(list(range(start, end - sequence_length + 1)))
@@ -609,7 +609,7 @@ class ReplayBuffer:
         action = self.action[indices]
         reward = self.reward[indices]
         done = self.done[indices]
-        return obs, next_obs,action, reward, done
+        return obs, next_obs, action, reward, done
 
     def sample_trajectory(self) -> Optional[TransitionBatch]:
         """Samples a full trajectory and returns it as a batch.

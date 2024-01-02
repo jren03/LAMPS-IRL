@@ -1,7 +1,7 @@
 from gym.spaces import Discrete
 from torch import nn
 import numpy as np
-from nn_utils import create_mlp, init_ortho
+from mbrl.util.common import create_mlp, init_ortho
 
 
 class Discriminator(nn.Module):

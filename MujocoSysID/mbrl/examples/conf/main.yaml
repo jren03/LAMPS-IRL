@@ -14,10 +14,10 @@ shaky: true
 from_end: false
 
 train_discriminator: true
+update_with_model: ???
 disc:
-  n_hidden: 2
   lr: 8e-4
-  freq_train_disc: 10000
+  freq_train_disc: 5000
   batch_size: 4096
   num_updates_per_step: 4
   num_traj_samples: 4

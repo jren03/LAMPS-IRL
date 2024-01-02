@@ -15,6 +15,7 @@ import mbrl.models
 import mbrl.planning
 import mbrl.types
 
+from torch import nn
 from torch.autograd import Variable
 from torch.autograd import grad as torch_grad
 from .replay_buffer import (
@@ -779,3 +780,29 @@ def gradient_penalty(learner_sa, expert_sa, f, device="cuda"):
     gradients_norm = torch.sqrt(torch.sum(gradients**2, dim=1) + 1e-12)
     # 2 * |f'(x_0)|
     return ((gradients_norm - 0.4) ** 2).mean()
+
+
+def init_ortho(layer):
+    if type(layer) == nn.Linear:
+        nn.init.orthogonal_(layer.weight)
+
+
+def create_mlp(
+    input_dim: int,
+    output_dim: int,
+    net_arch: List[int],
+    activation_fn: Type[nn.Module] = nn.ReLU,
+) -> List[nn.Module]:
+    if len(net_arch) > 0:
+        modules = [nn.Linear(input_dim, net_arch[0]), activation_fn()]
+    else:
+        modules = []
+
+    for idx in range(len(net_arch) - 1):
+        modules.append(nn.Linear(net_arch[idx], net_arch[idx + 1]))
+        modules.append(activation_fn())
+
+    if output_dim > 0:
+        last_layer_dim = net_arch[-1] if len(net_arch) > 0 else input_dim
+        modules.append(nn.Linear(last_layer_dim, output_dim))
+    return modules

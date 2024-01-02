@@ -60,6 +60,11 @@ class SAC(object):
             ).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
 
+        self.f_net = None
+
+    def add_f_net(self, f_net):
+        self.f_net = f_net
+
     def select_action(self, state, batched=False, evaluate=False):
         state = torch.FloatTensor(state)
         if not batched:
@@ -75,9 +80,9 @@ class SAC(object):
 
     def estimate_value(self, state):
         _, _, action = self.policy.sample(state)
-        q1, q2 = self.critic(state,action)
+        q1, q2 = self.critic(state, action)
 
-        return torch.min(q1,q2)
+        return torch.min(q1, q2)
 
     def update_parameters(
         self, memory, batch_size, updates, logger=None, reverse_mask=False
@@ -94,8 +99,12 @@ class SAC(object):
         state_batch = torch.FloatTensor(state_batch).to(self.device)
         next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
         action_batch = torch.FloatTensor(action_batch).to(self.device)
-        reward_batch = torch.FloatTensor(reward_batch).to(self.device).unsqueeze(1)
         mask_batch = torch.FloatTensor(mask_batch).to(self.device).unsqueeze(1)
+        reward_batch = self._relabel_with_f_net(
+            state_batch,
+            action_batch,
+            torch.FloatTensor(reward_batch).to(self.device).unsqueeze(1),
+        )
         if reverse_mask:
             mask_batch = mask_batch.logical_not()
 
@@ -178,7 +187,13 @@ class SAC(object):
         )
 
     def adv_update_parameters(
-        self, memory, expert_memory, batch_size, updates, logger=None, reverse_mask=False
+        self,
+        memory,
+        expert_memory,
+        batch_size,
+        updates,
+        logger=None,
+        reverse_mask=False,
     ):
         # Sample a batch from memory
         (
@@ -192,20 +207,22 @@ class SAC(object):
         (
             expert_state_batch,
             expert_action_batch,
-            expert_next_state_batch,
-            expert_reward_batch,
-            expert_mask_batch,
+            *_,
         ) = expert_memory.sample(batch_size).astuple()
 
         state_batch = torch.FloatTensor(state_batch).to(self.device)
         next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
         action_batch = torch.FloatTensor(action_batch).to(self.device)
-        reward_batch = torch.FloatTensor(reward_batch).to(self.device).unsqueeze(1)
         mask_batch = torch.FloatTensor(mask_batch).to(self.device).unsqueeze(1)
+        reward_batch = self._relabel_with_f_net(
+            state_batch,
+            action_batch,
+            torch.FloatTensor(reward_batch).to(self.device).unsqueeze(1),
+        )
 
         expert_state_batch = torch.FloatTensor(expert_state_batch).to(self.device)
         expert_action_batch = torch.FloatTensor(expert_action_batch).to(self.device)
-        
+
         if reverse_mask:
             mask_batch = mask_batch.logical_not()
 
@@ -293,6 +310,14 @@ class SAC(object):
             alpha_tlogs.item(),
         )
 
+    # relabel rewards with f_net
+    @torch.no_grad()
+    def _relabel_with_f_net(self, state_batch, action_batch, reward_batch):
+        # relabel rewards with f_net
+        if self.f_net is not None:
+            sa_pair = torch.cat((state_batch, action_batch), dim=1)
+            reward_batch = -self.f_net(sa_pair).reshape(reward_batch.shape)
+        return reward_batch
 
     # Save model parameters
     def save_checkpoint(self, env_name=None, suffix="", ckpt_path=None):
@@ -317,7 +342,7 @@ class SAC(object):
     def load_checkpoint(self, ckpt_path, evaluate=False):
         print("Loading models from {}".format(ckpt_path))
         if ckpt_path is not None:
-            checkpoint = torch.load(ckpt_path, map_location='cuda:0')
+            checkpoint = torch.load(ckpt_path, map_location="cuda:0")
             self.policy.load_state_dict(checkpoint["policy_state_dict"])
             self.critic.load_state_dict(checkpoint["critic_state_dict"])
             self.critic_target.load_state_dict(checkpoint["critic_target_state_dict"])

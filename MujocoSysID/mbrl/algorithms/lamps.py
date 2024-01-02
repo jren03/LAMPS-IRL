@@ -125,7 +125,11 @@ def sample(
             actions.append(action)
             obs, _, done, _ = env.step(action)
             env_steps += 0
-    return states, actions, env_steps
+    return (
+        torch.from_numpy(np.array(states)),
+        torch.from_numpy(np.array(actions)),
+        env_steps,
+    )
 
 
 def maybe_replace_sac_buffer(
@@ -169,7 +173,9 @@ def train(
     )
 
     is_maze = "maze" in cfg.overrides.env
-    expert_dataset = fetch_demos(cfg.overrides.env)
+    expert_dataset = fetch_demos(
+        cfg.overrides.env, zero_out_rewards=cfg.train_discriminator
+    )
 
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
@@ -272,11 +278,12 @@ def train(
         print(
             f"{PrintColors.OKBLUE}Training with discriminator function{PrintColors.ENDC}"
         )
-        f_net = Discriminator(env, n_hidden=cfg.disc.n_hidden).to(cfg.device)
+        f_net = Discriminator(env).to(cfg.device)
         f_opt = OAdam(f_net.parameters(), lr=cfg.disc.lr)
         model_env = mbrl.models.ModelEnv(
             env, dynamics_model, termination_fn, f_net, generator=torch_generator
         )
+        agent.sac_agent.add_f_net(f_net)
     else:
         print(
             f"{PrintColors.OKBLUE}Training with ground truth rewards{PrintColors.ENDC}"
@@ -350,6 +357,41 @@ def train(
                     rollout_length,
                     rollout_batch_size,
                 )
+
+                if cfg.update_with_model:
+                    print("UPDATE WITH MODEL")
+                    if not disc_steps == 0:
+                        learning_rate_used = cfg.disc.lr / disc_steps
+                    else:
+                        learning_rate_used = cfg.disc.lr
+                    f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
+
+                    S_curr, A_curr, s = sample(
+                        test_env, agent, cfg.disc.num_traj_samples
+                    )
+                    learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
+                    env_steps += s
+                    tbar.update(s)
+                    for _ in range(cfg.disc.num_updates_per_step):
+                        learner_sa = learner_sa_pairs[
+                            np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
+                        ]
+                        expert_batch = expert_replay_buffer.sample(cfg.disc.batch_size)
+                        expert_s, expert_a, *_ = cast(
+                            mbrl.types.TransitionBatch, expert_batch
+                        ).astuple()
+                        expert_sa = torch.cat(
+                            (torch.from_numpy(expert_s), torch.from_numpy(expert_a)),
+                            dim=1,
+                        ).to(cfg.device)
+                        f_opt.zero_grad()
+                        f_learner = f_net(learner_sa.float())
+                        f_expert = f_net(expert_sa.float())
+                        gp = gradient_penalty(learner_sa, expert_sa, f_net)
+                        loss = f_expert.mean() - f_learner.mean() + 10 * gp
+                        loss.backward()
+                        f_opt.step()
+                    disc_steps += 1
 
                 if debug_mode:
                     print(
@@ -453,7 +495,10 @@ def train(
             obs = next_obs
 
         # ------ Discriminator Training ------
+        if cfg.update_with_model:
+            continue
         if cfg.train_discriminator and updates_made % cfg.disc.freq_train_disc == 0:
+            print("HEREEE")
             if not disc_steps == 0:
                 learning_rate_used = cfg.disc.lr / disc_steps
             else:
@@ -465,13 +510,14 @@ def train(
             env_steps += s
             tbar.update(s)
             for _ in range(cfg.disc.num_updates_per_step):
-                # np.random.choice samples with replacement
                 learner_sa = learner_sa_pairs[
                     np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
                 ]
-                expert_sa = expert_sa_pairs[
-                    np.random.choice(len(expert_sa_pairs), cfg.disc.batch_size)
-                ]
+                expert_batch = expert_replay_buffer.sample(cfg.disc.batch_size)
+                expert_s, expert_a, *_ = cast(
+                    mbrl.types.TransitionBatch, expert_batch
+                ).astuple()
+                expert_sa = torch.cat((expert_s, expert_a), dim=1).to(cfg.device)
                 f_opt.zero_grad()
                 f_learner = f_net(learner_sa.float())
                 f_expert = f_net(expert_sa.float())
@@ -479,5 +525,6 @@ def train(
                 loss = f_expert.mean() - f_learner.mean() + 10 * gp
                 loss.backward()
                 f_opt.step()
+            disc_steps += 1
 
     return np.float32(best_eval_reward)
