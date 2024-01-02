@@ -352,7 +352,7 @@ def train(
                     else:
                         learning_rate_used = cfg.disc.lr
                     f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
-                    print(f"Update with model: {learning_rate_used}, {disc_steps}")
+                    # print(f"Update with model: {learning_rate_used}, {disc_steps}")
 
                     S_curr, A_curr, s = sample(
                         test_env, agent, cfg.disc.num_traj_samples
@@ -486,7 +486,7 @@ def train(
         if cfg.update_with_model:
             continue
         if cfg.train_discriminator and updates_made % cfg.disc.freq_train_disc == 0:
-            print(f"Discriminator Training: {learning_rate_used}, {disc_steps}")
+            # print(f"Discriminator Training: {learning_rate_used}, {disc_steps}")
             if not disc_steps == 0:
                 learning_rate_used = cfg.disc.lr / disc_steps
             else:
