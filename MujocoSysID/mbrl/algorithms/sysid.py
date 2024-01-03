@@ -145,6 +145,7 @@ def train(
     # ------------------- Initialization -------------------
     debug_mode = cfg.get("debug_mode", False)
 
+    is_maze = "maze" in cfg.overrides.env
     obs_shape = env.observation_space.shape
     act_shape = env.action_space.shape
 
@@ -353,7 +354,7 @@ def train(
                         test_env, agent, cfg.disc.num_traj_samples
                     )
                     learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
-                    env_steps += s
+                    # env_steps += s    # * ignore env_steps for discriminator training
                     tbar.update(s)
                     for _ in range(cfg.disc.num_updates_per_step):
                         learner_sa = learner_sa_pairs[

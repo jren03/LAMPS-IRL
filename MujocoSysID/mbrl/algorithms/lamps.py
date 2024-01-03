@@ -38,11 +38,13 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
 def rollout_model_and_populate_sac_buffer(
     model_env: mbrl.models.ModelEnv,
     replay_buffer: mbrl.util.ReplayBuffer,
+    expert_replay_buffer: mbrl.util.ReplayBuffer,
     agent: SACAgent,
     sac_buffer: mbrl.util.ReplayBuffer,
     sac_samples_action: bool,
     rollout_horizon: int,
     batch_size: int,
+    is_maze: bool = False,
 ):
     batch = replay_buffer.sample(batch_size)
     initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
@@ -64,6 +66,17 @@ def rollout_model_and_populate_sac_buffer(
             pred_rewards[~accum_dones, 0],
             pred_dones[~accum_dones, 0],
         )
+        if is_maze:
+            print("HHHHHHHHHHHHHHHHEEEEEEEEEEEEEEREREREREREE")
+            expert_batch = expert_replay_buffer.sample(batch_size)
+            (
+                exp_obs,
+                exp_next_obs,
+                exp_act,
+                exp_reward,
+                exp_done,
+            ) = cast(mbrl.types.TransitionBatch, expert_batch).astuple()
+            sac_buffer.add_batch(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
 
@@ -333,16 +346,18 @@ def train(
                 # Batch all rollouts for the next freq_train_model steps together
 
                 use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
-                # ! most configs have model_exp_ratio == 0.0, so use_expert_data is always False
+                # ! configs have model_exp_ratio == 0.0, so use_expert_data is always False
                 # ! however, replay_buffer contains a bit of expert data each iteration
                 rollout_model_and_populate_sac_buffer(
                     model_env,
                     expert_replay_buffer if use_expert_data else replay_buffer,
+                    expert_replay_buffer,
                     agent,
                     sac_buffer,
                     cfg.algorithm.sac_samples_action,
                     rollout_length,
                     rollout_batch_size,
+                    is_maze,
                 )
 
                 # ----------------------- Discriminator Training with Model ----------
@@ -409,6 +424,7 @@ def train(
                     )
 
                 else:
+                    # ! policy_exp_ratio == 0 for everything except pointmaze
                     if rng.random() < cfg.overrides.policy_exp_ratio:
                         agent.sac_agent.adv_update_parameters(
                             which_buffer,
@@ -495,7 +511,7 @@ def train(
 
             S_curr, A_curr, s = sample(test_env, agent, cfg.disc.num_traj_samples)
             learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
-            env_steps += s
+            # env_steps += s    # * ignore env_steps for discriminator training
             tbar.update(s)
             for _ in range(cfg.disc.num_updates_per_step):
                 learner_sa = learner_sa_pairs[
