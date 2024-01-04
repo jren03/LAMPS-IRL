@@ -160,7 +160,6 @@ if __name__ == "__main__":
         choices=["ant", "hc", "hop", "hum", "walk"],
         help="Name of the environment",
     )
-    parser.add_argument("-o", "--override", action="store_true", default=False)
     args = parser.parse_args()
 
     env_abbr = args.env_name

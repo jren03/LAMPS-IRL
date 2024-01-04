@@ -104,7 +104,9 @@ def _legacy_make_env(
         env = GoalWrapper(env)
 
     if cfg.shaky:
-        if "ant" in env_name:
+        if "maze" in env_name:
+            p_tremble = 0.0
+        elif "ant" in env_name:
             p_tremble = 0.01
         elif "cheetah" in env_name:
             p_tremble = 0.075
@@ -114,8 +116,6 @@ def _legacy_make_env(
             p_tremble = 0.025
         elif "walker" in env_name:
             p_tremble = 0.05
-        elif "maze" in env_name:
-            p_tremble = 0.0
         else:
             raise ValueError(f"Invalid environment: {env_name}")
         env = TremblingHandWrapper(env, p_tremble=p_tremble)

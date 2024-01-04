@@ -12,6 +12,7 @@ import mbrl.algorithms.pets as pets
 import mbrl.algorithms.planet as planet
 import mbrl.algorithms.lamps as lamps
 import mbrl.algorithms.sysid as sysid
+from mbrl.util.common import PrintColors
 # import mbrl.algorithms.mm as mm
 
 import mbrl.util.env
@@ -19,9 +20,18 @@ import mbrl.util.env
 
 @hydra.main(config_path="conf", config_name="main")
 def run(cfg: omegaconf.DictConfig):
+    print(f"{PrintColors.OKBLUE}Config:")
+    print(
+        f"{cfg.decay_model_exp_ratio=}\t{cfg.decay_policy_exp_ratio=}\t{cfg.add_exp_to_replay_buffer=}"
+    )
+    print(
+        f"Making {cfg.overrides.num_steps / cfg.eval_frequency} evaluations{PrintColors.ENDC}"
+    )
+
     env, term_fn, reward_fn = mbrl.util.env.EnvHandler.make_env(cfg)
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
+
     if cfg.algorithm.name == "pets":
         return pets.train(env, term_fn, reward_fn, cfg, silent=cfg.silent)
     if cfg.algorithm.name == "mbpo":

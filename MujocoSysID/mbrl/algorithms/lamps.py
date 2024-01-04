@@ -66,17 +66,16 @@ def rollout_model_and_populate_sac_buffer(
             pred_rewards[~accum_dones, 0],
             pred_dones[~accum_dones, 0],
         )
-        if is_maze:
-            print("HHHHHHHHHHHHHHHHEEEEEEEEEEEEEEREREREREREE")
-            expert_batch = expert_replay_buffer.sample(batch_size)
-            (
-                exp_obs,
-                exp_next_obs,
-                exp_act,
-                exp_reward,
-                exp_done,
-            ) = cast(mbrl.types.TransitionBatch, expert_batch).astuple()
-            sac_buffer.add_batch(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
+        # if is_maze:
+        #     expert_batch = expert_replay_buffer.sample(batch_size)
+        #     (
+        #         exp_obs,
+        #         exp_act,
+        #         exp_next_obs,
+        #         exp_reward,
+        #         exp_done,
+        #     ) = cast(mbrl.types.TransitionBatch, expert_batch).astuple()
+        #     sac_buffer.add_batch(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
 
@@ -245,7 +244,9 @@ def train(
         expert_dataset["terminals"][:1000],
     )
     if cfg.from_end:
-        print(f"{PrintColors.OKBLUE}Adding from end of expert dataset")
+        print(
+            f"{PrintColors.OKBLUE}Adding {cfg.overrides.expert_size} from end of expert dataset"
+        )
         expert_replay_buffer.add_batch(
             expert_dataset["observations"][-cfg.overrides.expert_size :],
             expert_dataset["actions"][-cfg.overrides.expert_size :],
@@ -254,7 +255,9 @@ def train(
             expert_dataset["terminals"][-cfg.overrides.expert_size :],
         )
     else:
-        print(f"{PrintColors.OKBLUE}Adding from beginning of expert dataset")
+        print(
+            f"{PrintColors.OKBLUE}Adding {cfg.overrides.expert_size} from beginning of expert dataset"
+        )
         expert_replay_buffer.add_batch(
             expert_dataset["observations"][: cfg.overrides.expert_size],
             expert_dataset["actions"][: cfg.overrides.expert_size],
@@ -262,7 +265,6 @@ def train(
             expert_dataset["rewards"][: cfg.overrides.expert_size],
             expert_dataset["terminals"][: cfg.overrides.expert_size],
         )
-    print(f"Expert buffer size: {cfg.overrides.expert_size}{PrintColors.ENDC}")
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
@@ -323,14 +325,15 @@ def train(
                 env, obs, agent, {}, replay_buffer, policy_buffer
             )
 
-            (
-                exp_obs,
-                exp_next_obs,
-                exp_act,
-                exp_reward,
-                exp_done,
-            ) = expert_replay_buffer.sample_one()
-            replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
+            if cfg.add_exp_to_replay_buffer:
+                (
+                    exp_obs,
+                    exp_next_obs,
+                    exp_act,
+                    exp_reward,
+                    exp_done,
+                ) = expert_replay_buffer.sample_one()
+                replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
 
             # --------------- Model Training -----------------
             if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
@@ -450,7 +453,7 @@ def train(
                     logger.dump(updates_made, save=True)
 
             # ------ Epoch ended (evaluate and save model) ------
-            if (env_steps + 1) % cfg.overrides.epoch_length == 0:
+            if (env_steps + 1) % cfg.eval_frequency == 0:
                 if not is_maze:
                     avg_reward = evaluate(
                         test_env,
