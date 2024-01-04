@@ -236,13 +236,14 @@ def train(
         action_type=dtype,
         reward_type=dtype,
     )
-    replay_buffer.add_batch(
-        expert_dataset["observations"][:1000],
-        expert_dataset["actions"][:1000],
-        expert_dataset["next_observations"][:1000],
-        expert_dataset["rewards"][:1000],
-        expert_dataset["terminals"][:1000],
-    )
+    if cfg.add_exp_to_replay_buffer:
+        replay_buffer.add_batch(
+            expert_dataset["observations"][:1000],
+            expert_dataset["actions"][:1000],
+            expert_dataset["next_observations"][:1000],
+            expert_dataset["rewards"][:1000],
+            expert_dataset["terminals"][:1000],
+        )
     if cfg.from_end:
         print(
             f"{PrintColors.OKBLUE}Adding {cfg.overrides.expert_size} from end of expert dataset"
