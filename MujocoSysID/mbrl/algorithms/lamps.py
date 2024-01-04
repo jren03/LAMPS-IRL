@@ -364,7 +364,7 @@ def train(
                 )
 
                 # ----------------------- Discriminator Training with Model ----------
-                if cfg.update_with_model:
+                if cfg.update_with_model and cfg.train_discriminator:
                     if not disc_steps == 0:
                         learning_rate_used = cfg.disc.lr / disc_steps
                     else:
@@ -453,6 +453,8 @@ def train(
                     logger.dump(updates_made, save=True)
 
             # ------ Epoch ended (evaluate and save model) ------
+            if (env_steps + 1) % cfg.overrides.epoch_length == 0:
+                epoch += 1
             if (env_steps + 1) % cfg.eval_frequency == 0:
                 if not is_maze:
                     avg_reward = evaluate(
@@ -495,7 +497,6 @@ def train(
                     agent.sac_agent.save_checkpoint(
                         ckpt_path=os.path.join(work_dir, "sac.pth")
                     )
-                epoch += 1
 
             tbar.update(1)
             env_steps += 1
