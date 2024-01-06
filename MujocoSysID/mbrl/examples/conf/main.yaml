@@ -12,6 +12,8 @@ debug_mode: false
 decay_model_exp_ratio: false
 decay_policy_exp_ratio: false
 add_exp_to_replay_buffer: false
+use_policy_buffer_adv_update: false
+sac_rollout_reset_ratio: 0.0
 
 eval_frequency: 10000
 

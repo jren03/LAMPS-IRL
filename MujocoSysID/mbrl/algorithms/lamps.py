@@ -38,13 +38,11 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
 def rollout_model_and_populate_sac_buffer(
     model_env: mbrl.models.ModelEnv,
     replay_buffer: mbrl.util.ReplayBuffer,
-    expert_replay_buffer: mbrl.util.ReplayBuffer,
     agent: SACAgent,
     sac_buffer: mbrl.util.ReplayBuffer,
     sac_samples_action: bool,
     rollout_horizon: int,
     batch_size: int,
-    is_maze: bool = False,
 ):
     batch = replay_buffer.sample(batch_size)
     initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
@@ -66,16 +64,6 @@ def rollout_model_and_populate_sac_buffer(
             pred_rewards[~accum_dones, 0],
             pred_dones[~accum_dones, 0],
         )
-        # if is_maze:
-        #     expert_batch = expert_replay_buffer.sample(batch_size)
-        #     (
-        #         exp_obs,
-        #         exp_act,
-        #         exp_next_obs,
-        #         exp_reward,
-        #         exp_done,
-        #     ) = cast(mbrl.types.TransitionBatch, expert_batch).astuple()
-        #     sac_buffer.add_batch(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
 
@@ -238,11 +226,13 @@ def train(
     )
     if cfg.add_exp_to_replay_buffer:
         replay_buffer.add_batch(
-            expert_dataset["observations"][:1000],
-            expert_dataset["actions"][:1000],
-            expert_dataset["next_observations"][:1000],
-            expert_dataset["rewards"][:1000],
-            expert_dataset["terminals"][:1000],
+            expert_dataset["observations"][: cfg.algorithm.initial_exploration_steps],
+            expert_dataset["actions"][: cfg.algorithm.initial_exploration_steps],
+            expert_dataset["next_observations"][
+                : cfg.algorithm.initial_exploration_steps
+            ],
+            expert_dataset["rewards"][: cfg.algorithm.initial_exploration_steps],
+            expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
         )
     if cfg.from_end:
         print(
@@ -338,30 +328,39 @@ def train(
 
             # --------------- Model Training -----------------
             if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
+                use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
+                if cfg.add_exp_to_replay_buffer:
+                    model_train_buffer = replay_buffer
+                elif use_expert_data:
+                    model_train_buffer = expert_replay_buffer
+                else:
+                    model_train_buffer = policy_buffer
                 mbrl.util.common.train_model_and_save_model_and_data(
                     dynamics_model,
                     model_trainer,
                     cfg.overrides,
-                    replay_buffer,
+                    model_train_buffer,
                     work_dir=work_dir,
                 )
 
                 # --------- Rollout new model and store imagined trajectories --------
                 # Batch all rollouts for the next freq_train_model steps together
-
-                use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
-                # ! configs have model_exp_ratio == 0.0, so use_expert_data is always False
-                # ! however, replay_buffer contains a bit of expert data each iteration
+                # * rollout only from expert states
+                reset_to_exp_states = rng.random() < cfg.sac_rollout_reset_ratio
+                if cfg.add_exp_to_replay_buffer:
+                    rollout_buffer = replay_buffer
+                elif reset_to_exp_states:
+                    rollout_buffer = expert_replay_buffer
+                else:
+                    rollout_buffer = policy_buffer
                 rollout_model_and_populate_sac_buffer(
                     model_env,
-                    expert_replay_buffer if use_expert_data else replay_buffer,
-                    expert_replay_buffer,
+                    rollout_buffer,
                     agent,
                     sac_buffer,
                     cfg.algorithm.sac_samples_action,
                     rollout_length,
                     rollout_batch_size,
-                    is_maze,
                 )
 
                 # ----------------------- Discriminator Training with Model ----------
@@ -371,14 +370,13 @@ def train(
                     else:
                         learning_rate_used = cfg.disc.lr
                     f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
-                    # print(f"Update with model: {learning_rate_used}, {disc_steps}")
 
                     S_curr, A_curr, s = sample(
                         test_env, agent, cfg.disc.num_traj_samples
                     )
                     learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
-                    env_steps += s
-                    tbar.update(s)
+                    # env_steps += s
+                    # tbar.update(s)
                     for _ in range(cfg.disc.num_updates_per_step):
                         learner_sa = learner_sa_pairs[
                             np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
@@ -410,8 +408,8 @@ def train(
 
             # --------------- Agent Training -----------------
             for _ in range(cfg.overrides.num_sac_updates_per_step):
-                use_real_data = rng.random() < cfg.algorithm.real_data_ratio
                 # ! in the existing configs, use_real_data is always False because real_data_ratio == 0.0
+                use_real_data = rng.random() < cfg.algorithm.real_data_ratio
                 which_buffer = replay_buffer if use_real_data else sac_buffer
                 if (env_steps + 1) % cfg.overrides.sac_updates_every_steps != 0 or len(
                     which_buffer
@@ -442,7 +440,9 @@ def train(
                     else:
                         agent.sac_agent.adv_update_parameters(
                             which_buffer,
-                            policy_buffer,
+                            policy_buffer
+                            if cfg.use_policy_buffer_adv_update
+                            else sac_buffer,
                             cfg.overrides.sac_batch_size,
                             updates_made,
                             logger,
