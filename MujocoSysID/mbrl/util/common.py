@@ -505,6 +505,7 @@ def train_model_and_save_model_and_data(
         callback (callable, optional): if provided, this function will be called after
             every training epoch. See :class:`mbrl.models.ModelTrainer` for signature.
     """
+    breakpoint()
     dataset_train, dataset_val = mbrl.util.common.get_basic_buffer_iterators(
         replay_buffer,
         cfg.model_batch_size,

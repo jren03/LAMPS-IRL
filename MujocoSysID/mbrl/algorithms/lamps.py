@@ -317,7 +317,6 @@ def train(
             )
 
             if cfg.add_exp_to_replay_buffer:
-                print("HERE")
                 (
                     exp_obs,
                     exp_next_obs,
@@ -326,16 +325,22 @@ def train(
                     exp_done,
                 ) = expert_replay_buffer.sample_one()
                 replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
-            else:
-                print("HERE2")
 
             # --------------- Model Training -----------------
-            if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
+            if True or (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
+                # ! reset to 50/50 learner/expert states
                 use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
-                if cfg.add_exp_to_replay_buffer or not use_expert_data:
+                if cfg.add_exp_to_replay_buffer:
+                    print("HERERE")
                     model_train_buffer = replay_buffer
-                else:
+                elif use_expert_data:
+                    print("1")
                     model_train_buffer = expert_replay_buffer
+                else:
+                    print("2")
+                    model_train_buffer = policy_buffer
+
+                print("START")
                 mbrl.util.common.train_model_and_save_model_and_data(
                     dynamics_model,
                     model_trainer,
@@ -343,16 +348,20 @@ def train(
                     model_train_buffer,
                     work_dir=work_dir,
                 )
+                print("HERE")
 
                 # --------- Rollout new model and store imagined trajectories --------
                 # Batch all rollouts for the next freq_train_model steps together
-                # * rollout only from expert states
+                # ! reset to expert states
                 reset_to_exp_states = rng.random() < cfg.sac_rollout_reset_ratio
                 if cfg.add_exp_to_replay_buffer:
+                    print("ERROR")
                     rollout_buffer = replay_buffer
                 elif reset_to_exp_states:
+                    print("3")
                     rollout_buffer = expert_replay_buffer
                 else:
+                    print("4")
                     rollout_buffer = policy_buffer
                 rollout_model_and_populate_sac_buffer(
                     model_env,
@@ -409,8 +418,8 @@ def train(
 
             # --------------- Agent Training -----------------
             for _ in range(cfg.overrides.num_sac_updates_per_step):
-                # ! in the existing configs, use_real_data is always False because real_data_ratio == 0.0
                 use_real_data = rng.random() < cfg.algorithm.real_data_ratio
+                # ! which buffer is always sac_buffer because use_real_data is always False
                 which_buffer = replay_buffer if use_real_data else sac_buffer
                 if (env_steps + 1) % cfg.overrides.sac_updates_every_steps != 0 or len(
                     which_buffer
@@ -428,6 +437,7 @@ def train(
 
                 else:
                     # ! policy_exp_ratio == 0 for everything except pointmaze
+                    # ! should update actor and critic on rollouts in the learned model
                     if rng.random() < cfg.overrides.policy_exp_ratio:
                         agent.sac_agent.adv_update_parameters(
                             which_buffer,
