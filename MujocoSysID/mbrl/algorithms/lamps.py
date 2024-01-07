@@ -324,7 +324,7 @@ def train(
             replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
 
             # --------------- Model Training -----------------
-            if True or (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
+            if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
                 # ! reset to 50/50 learner/expert states
                 use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
                 model_train_buffer = replay_buffer
