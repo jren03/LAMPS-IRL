@@ -317,6 +317,7 @@ def train(
             )
 
             if cfg.add_exp_to_replay_buffer:
+                print("HERE")
                 (
                     exp_obs,
                     exp_next_obs,
@@ -325,16 +326,16 @@ def train(
                     exp_done,
                 ) = expert_replay_buffer.sample_one()
                 replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
+            else:
+                print("HERE2")
 
             # --------------- Model Training -----------------
             if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
                 use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
-                if cfg.add_exp_to_replay_buffer:
+                if cfg.add_exp_to_replay_buffer or not use_expert_data:
                     model_train_buffer = replay_buffer
-                elif use_expert_data:
-                    model_train_buffer = expert_replay_buffer
                 else:
-                    model_train_buffer = policy_buffer
+                    model_train_buffer = expert_replay_buffer
                 mbrl.util.common.train_model_and_save_model_and_data(
                     dynamics_model,
                     model_trainer,
