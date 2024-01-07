@@ -93,7 +93,10 @@ def fetch_demos(env_name, zero_out_rewards=True):
         dataset_path = "d4rl"
     else:
         num_demos, T = 64, 1000
-        project_root = Path("/share/portal/jlr429/pessimistic-irl/")
+        if "guest" in str(Path(Path.cwd())):
+            project_root = Path("/home/guest/dev/juntao/")
+        else:
+            project_root = Path("/share/portal/jlr429/pessimistic-irl/")
         dataset_path = Path(project_root, "expert_data", f"{env_name}_100000_sb3.h5")
         dataset = h5py.File(dataset_path, "r")
         dataset = {
