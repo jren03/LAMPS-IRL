@@ -226,13 +226,11 @@ def train(
     )
     if cfg.add_exp_to_replay_buffer:
         replay_buffer.add_batch(
-            expert_dataset["observations"][: cfg.algorithm.initial_exploration_steps],
-            expert_dataset["actions"][: cfg.algorithm.initial_exploration_steps],
-            expert_dataset["next_observations"][
-                : cfg.algorithm.initial_exploration_steps
-            ],
-            expert_dataset["rewards"][: cfg.algorithm.initial_exploration_steps],
-            expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
+            expert_dataset["observations"][:1000],
+            expert_dataset["actions"][:1000],
+            expert_dataset["next_observations"][:1000],
+            expert_dataset["rewards"][:1000],
+            expert_dataset["terminals"][:1000],
         )
     if cfg.from_end:
         print(
@@ -316,31 +314,20 @@ def train(
                 env, obs, agent, {}, replay_buffer, policy_buffer
             )
 
-            if cfg.add_exp_to_replay_buffer:
-                (
-                    exp_obs,
-                    exp_next_obs,
-                    exp_act,
-                    exp_reward,
-                    exp_done,
-                ) = expert_replay_buffer.sample_one()
-                replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
+            (
+                exp_obs,
+                exp_next_obs,
+                exp_act,
+                exp_reward,
+                exp_done,
+            ) = expert_replay_buffer.sample_one()
+            replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
 
             # --------------- Model Training -----------------
             if True or (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
                 # ! reset to 50/50 learner/expert states
                 use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
-                if cfg.add_exp_to_replay_buffer:
-                    print("HERERE")
-                    model_train_buffer = replay_buffer
-                elif use_expert_data:
-                    print("1")
-                    model_train_buffer = expert_replay_buffer
-                else:
-                    print("2")
-                    model_train_buffer = policy_buffer
-
-                print("START")
+                model_train_buffer = replay_buffer
                 mbrl.util.common.train_model_and_save_model_and_data(
                     dynamics_model,
                     model_trainer,
@@ -348,20 +335,16 @@ def train(
                     model_train_buffer,
                     work_dir=work_dir,
                 )
-                print("HERE")
 
                 # --------- Rollout new model and store imagined trajectories --------
                 # Batch all rollouts for the next freq_train_model steps together
                 # ! reset to expert states
-                reset_to_exp_states = rng.random() < cfg.sac_rollout_reset_ratio
-                if cfg.add_exp_to_replay_buffer:
-                    print("ERROR")
+                reset_to_exp_states = rng.random() < cfg.sac_expert_reset_ratio
+                if cfg.use_yuda_default:
                     rollout_buffer = replay_buffer
                 elif reset_to_exp_states:
-                    print("3")
                     rollout_buffer = expert_replay_buffer
                 else:
-                    print("4")
                     rollout_buffer = policy_buffer
                 rollout_model_and_populate_sac_buffer(
                     model_env,
@@ -452,7 +435,7 @@ def train(
                         agent.sac_agent.adv_update_parameters(
                             which_buffer,
                             policy_buffer
-                            if cfg.use_policy_buffer_adv_update
+                            if cfg.use_yuda_default or cfg.use_policy_buffer_adv_update
                             else sac_buffer,
                             cfg.overrides.sac_batch_size,
                             updates_made,

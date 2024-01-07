@@ -21,11 +21,17 @@ import mbrl.util.env
 @hydra.main(config_path="conf", config_name="main")
 def run(cfg: omegaconf.DictConfig):
     print(f"{PrintColors.BOLD}Config:")
-    print(f"add_exp_to_replay_buffer: {cfg.add_exp_to_replay_buffer}")
-    print(f"use_policy_buffer_adv_update: {cfg.use_policy_buffer_adv_update}")
-    print(f"model_exp_ratio: {cfg.overrides.model_exp_ratio}")
-    print(f"policy_exp_ratio: {cfg.overrides.policy_exp_ratio}")
-    print(f"sac_rollout_reset_ratio: {cfg.sac_rollout_reset_ratio}")
+    cfgs = [
+        cfg.use_yuda_default,
+        cfg.add_exp_to_replay_buffer,
+        cfg.use_policy_buffer_adv_update,
+        cfg.overrides.model_exp_ratio,
+        cfg.overrides.policy_exp_ratio,
+        cfg.sac_expert_reset_ratio,
+    ]
+    for c in cfgs:
+        if c != 0.0 and c is not False:
+            print(f"{c=}")
     print(
         f"Making {cfg.overrides.num_steps / cfg.eval_frequency} evaluations{PrintColors.ENDC}"
     )
