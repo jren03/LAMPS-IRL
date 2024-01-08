@@ -32,6 +32,7 @@ from tqdm import tqdm
 MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("epoch", "E", "int"),
     ("rollout_length", "RL", "int"),
+    ("sac_reset_ratio", "SRR", "float"),
 ]
 
 
@@ -257,6 +258,15 @@ def train(
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
+
+    sac_reset_schedule = np.array(
+        [
+            [cfg.sac_expert_reset_ratio, cfg.sac_expert_reset_ratio, 30000],
+            [cfg.sac_expert_reset_ratio, 0.1, 100000],
+        ]
+    )
+    ratio_lag = 0
+
     rollout_batch_size = (
         cfg.overrides.effective_model_rollouts_per_step * cfg.algorithm.freq_train_model
     )
@@ -339,7 +349,17 @@ def train(
                 # --------- Rollout new model and store imagined trajectories --------
                 # Batch all rollouts for the next freq_train_model steps together
                 # ! reset to expert states
-                reset_to_exp_states = rng.random() < cfg.sac_expert_reset_ratio
+                if cfg.schedule_sac_ratio:
+                    (
+                        sac_reset_schedule,
+                        sac_reset_ratio,
+                        ratio_lag,
+                    ) = mbrl.util.math.get_ratio(
+                        sac_reset_schedule, env_steps, ratio_lag
+                    )
+                else:
+                    sac_reset_ratio = cfg.sac_expert_reset_ratio
+                reset_to_exp_states = rng.random() < sac_reset_ratio
                 if cfg.use_yuda_default:
                     rollout_buffer = replay_buffer
                 elif reset_to_exp_states:
@@ -466,6 +486,7 @@ def train(
                             "env_step": env_steps,
                             "episode_reward": avg_reward,
                             "rollout_length": rollout_length,
+                            "sac_reset_ratio": sac_reset_ratio,
                         },
                     )
                 else:

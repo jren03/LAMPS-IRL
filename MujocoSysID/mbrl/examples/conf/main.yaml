@@ -13,6 +13,7 @@ use_yuda_default: false
 add_exp_to_replay_buffer: false
 use_policy_buffer_adv_update: false
 sac_expert_reset_ratio: 0.0
+schedule_sac_ratio: false
 
 eval_frequency: 10000
 

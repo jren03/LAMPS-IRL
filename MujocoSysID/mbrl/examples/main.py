@@ -21,17 +21,18 @@ import mbrl.util.env
 @hydra.main(config_path="conf", config_name="main")
 def run(cfg: omegaconf.DictConfig):
     print(f"{PrintColors.BOLD}Config:")
-    cfgs = [
-        cfg.use_yuda_default,
-        cfg.add_exp_to_replay_buffer,
-        cfg.use_policy_buffer_adv_update,
-        cfg.overrides.model_exp_ratio,
-        cfg.overrides.policy_exp_ratio,
-        cfg.sac_expert_reset_ratio,
-    ]
-    for c in cfgs:
-        if c != 0.0 and c is not False:
-            print(f"{c=}")
+    cfgs = {
+        "use_yuda_default": cfg.use_yuda_default,
+        "add_exp_to_replay_buffer": cfg.add_exp_to_replay_buffer,
+        "use_policy_buffer_adv_update": cfg.use_policy_buffer_adv_update,
+        "model_exp_ratio": cfg.overrides.model_exp_ratio,
+        "policy_exp_ratio": cfg.overrides.policy_exp_ratio,
+        "sac_expert_reset_ratio": cfg.sac_expert_reset_ratio,
+        "schedule_sac_ratio": cfg.schedule_sac_ratio,
+    }
+    for k, v in cfgs.items():
+        if v != 0.0 and v is not False:
+            print(f"{k}: {v}")
     print(
         f"Making {cfg.overrides.num_steps / cfg.eval_frequency} evaluations{PrintColors.ENDC}"
     )

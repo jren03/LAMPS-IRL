@@ -38,6 +38,17 @@ def truncated_linear(
     return y
 
 
+def get_ratio(schedule, t, ratio_lag):
+    if t > schedule[0, 2] and schedule.shape[0] > 1:
+        schedule = np.delete(schedule, 0, 0)
+        ratio_lag = t
+    max_lr, min_lr, lr_steps = schedule[0]
+    ratio = max_lr - min(1, (t - ratio_lag) / (lr_steps - ratio_lag)) * (
+        max_lr - min_lr
+    )
+    return schedule, ratio, ratio_lag
+
+
 def gaussian_nll(
     pred_mean: torch.Tensor,
     pred_logvar: torch.Tensor,
@@ -196,7 +207,7 @@ def propagate_from_indices(
 
 
 def propagate_random_model(
-    predictions: Tuple[torch.Tensor, ...]
+    predictions: Tuple[torch.Tensor, ...],
 ) -> Tuple[torch.Tensor, ...]:
     """Propagates ensemble outputs by choosing a random model.
 
@@ -221,7 +232,7 @@ def propagate_random_model(
 
 
 def propagate_expectation(
-    predictions: Tuple[torch.Tensor, ...]
+    predictions: Tuple[torch.Tensor, ...],
 ) -> Tuple[torch.Tensor, ...]:
     """Propagates ensemble outputs by taking expectation over model predictions.
 
