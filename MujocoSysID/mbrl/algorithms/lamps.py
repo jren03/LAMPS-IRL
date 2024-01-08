@@ -10,6 +10,7 @@ import hydra.utils
 import numpy as np
 import omegaconf
 import torch
+import pprint
 
 import mbrl.constants
 import mbrl.models
@@ -152,6 +153,7 @@ def train(
 ) -> np.float32:
     # ------------------- Initialization -------------------
     debug_mode = cfg.get("debug_mode", False)
+    pp = pprint.PrettyPrinter(indent=4)
 
     obs_shape = env.observation_space.shape
     act_shape = env.action_space.shape
@@ -259,18 +261,35 @@ def train(
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
 
-    sac_reset_ratio = cfg.sac_expert_reset_ratio
+    # --------------- SAC reset ratio schedule -----------------
+    sac_reset_ratio = cfg.sac_schedule.start_ratio
     sac_reset_schedule = np.array(
         [
-            [sac_reset_ratio, sac_reset_ratio, 30000],
-            [sac_reset_ratio, 0.1, 100000],
+            [sac_reset_ratio, sac_reset_ratio, cfg.sac_schedule.m1],
+            [
+                sac_reset_ratio,
+                cfg.sac_schedule.end_ratio,
+                cfg.sac_schedule.m2,
+            ],
         ]
     )
-    ratio_lag = 0
+    sac_ratio_lag = 0
     if cfg.schedule_sac_ratio:
-        print(
-            f"{PrintColors.OKBLUE}Scheduling SAC reset ratio: {sac_reset_schedule}{PrintColors.ENDC}"
-        )
+        print(f"{PrintColors.OKBLUE}Scheduling SAC reset ratio:")
+        pp.pprint(sac_reset_schedule)
+        print(PrintColors.ENDC)
+    # -------------- discriminator lr schedule ------------------
+    disc_lr = cfg.disc.start_lr
+    disc_lr_schedule = np.array(
+        [
+            [disc_lr, cfg.disc.mid_lr, cfg.disc.m1],
+            [cfg.disc.mid_lr, cfg.disc.end_lr, cfg.disc.m2],
+        ]
+    )
+    disc_ratio_lag = 0
+    print(f"{PrintColors.OKBLUE}Discriminator lr schedule:")
+    pp.pprint(disc_lr_schedule)
+    print(PrintColors.ENDC)
 
     rollout_batch_size = (
         cfg.overrides.effective_model_rollouts_per_step * cfg.algorithm.freq_train_model
@@ -285,7 +304,7 @@ def train(
             f"{PrintColors.OKBLUE}Training with discriminator function{PrintColors.ENDC}"
         )
         f_net = Discriminator(env).to(cfg.device)
-        f_opt = OAdam(f_net.parameters(), lr=cfg.disc.lr)
+        f_opt = OAdam(f_net.parameters(), lr=disc_lr)
         model_env = mbrl.models.ModelEnv(
             env, dynamics_model, termination_fn, f_net, generator=torch_generator
         )
@@ -358,9 +377,9 @@ def train(
                     (
                         sac_reset_schedule,
                         sac_reset_ratio,
-                        ratio_lag,
+                        sac_ratio_lag,
                     ) = mbrl.util.math.get_ratio(
-                        sac_reset_schedule, env_steps, ratio_lag
+                        sac_reset_schedule, env_steps, sac_ratio_lag
                     )
                 reset_to_exp_states = rng.random() < sac_reset_ratio
                 if cfg.use_yuda_default:
@@ -381,11 +400,14 @@ def train(
 
                 # ----------------------- Discriminator Training with Model ----------
                 if cfg.update_with_model and cfg.train_discriminator:
-                    if not disc_steps == 0:
-                        learning_rate_used = cfg.disc.lr / disc_steps
-                    else:
-                        learning_rate_used = cfg.disc.lr
-                    f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
+                    (
+                        disc_lr_schedule,
+                        disc_lr,
+                        disc_ratio_lag,
+                    ) = mbrl.util.math.get_ratio(
+                        disc_lr_schedule, env_steps, disc_ratio_lag
+                    )
+                    f_opt = OAdam(f_net.parameters(), lr=disc_lr)
 
                     S_curr, A_curr, s = sample(
                         test_env, agent, cfg.disc.num_traj_samples
@@ -510,48 +532,48 @@ def train(
                             "rollout_length": rollout_length,
                         },
                     )
-                if avg_reward > best_eval_reward:
-                    video_recorder.save(f"{epoch}.mp4")
-                    best_eval_reward = avg_reward
-                    agent.sac_agent.save_checkpoint(
-                        ckpt_path=os.path.join(work_dir, "sac.pth")
-                    )
+                # if avg_reward > best_eval_reward:
+                #     video_recorder.save(f"{epoch}.mp4")
+                #     best_eval_reward = avg_reward
+                #     agent.sac_agent.save_checkpoint(
+                #         ckpt_path=os.path.join(work_dir, "sac.pth")
+                #     )
 
             tbar.update(1)
             env_steps += 1
             obs = next_obs
 
         # ------ Discriminator Training ------
-        if cfg.update_with_model:
-            continue
-        if cfg.train_discriminator and updates_made % cfg.disc.freq_train_disc == 0:
-            # print(f"Discriminator Training: {learning_rate_used}, {disc_steps}")
-            if not disc_steps == 0:
-                learning_rate_used = cfg.disc.lr / disc_steps
-            else:
-                learning_rate_used = cfg.disc.lr
-            f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
+        # if cfg.update_with_model:
+        #     continue
+        # if cfg.train_discriminator and updates_made % cfg.disc.freq_train_disc == 0:
+        #     # print(f"Discriminator Training: {learning_rate_used}, {disc_steps}")
+        #     if not disc_steps == 0:
+        #         learning_rate_used = cfg.disc.lr / disc_steps
+        #     else:
+        #         learning_rate_used = cfg.disc.lr
+        #     f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
 
-            S_curr, A_curr, s = sample(test_env, agent, cfg.disc.num_traj_samples)
-            learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
-            # env_steps += s    # * ignore env_steps for discriminator training
-            tbar.update(s)
-            for _ in range(cfg.disc.num_updates_per_step):
-                learner_sa = learner_sa_pairs[
-                    np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
-                ]
-                expert_batch = expert_replay_buffer.sample(cfg.disc.batch_size)
-                expert_s, expert_a, *_ = cast(
-                    mbrl.types.TransitionBatch, expert_batch
-                ).astuple()
-                expert_sa = torch.cat((expert_s, expert_a), dim=1).to(cfg.device)
-                f_opt.zero_grad()
-                f_learner = f_net(learner_sa.float())
-                f_expert = f_net(expert_sa.float())
-                gp = gradient_penalty(learner_sa, expert_sa, f_net)
-                loss = f_expert.mean() - f_learner.mean() + 10 * gp
-                loss.backward()
-                f_opt.step()
-            disc_steps += 1
+        #     S_curr, A_curr, s = sample(test_env, agent, cfg.disc.num_traj_samples)
+        #     learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
+        #     # env_steps += s    # * ignore env_steps for discriminator training
+        #     tbar.update(s)
+        #     for _ in range(cfg.disc.num_updates_per_step):
+        #         learner_sa = learner_sa_pairs[
+        #             np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
+        #         ]
+        #         expert_batch = expert_replay_buffer.sample(cfg.disc.batch_size)
+        #         expert_s, expert_a, *_ = cast(
+        #             mbrl.types.TransitionBatch, expert_batch
+        #         ).astuple()
+        #         expert_sa = torch.cat((expert_s, expert_a), dim=1).to(cfg.device)
+        #         f_opt.zero_grad()
+        #         f_learner = f_net(learner_sa.float())
+        #         f_expert = f_net(expert_sa.float())
+        #         gp = gradient_penalty(learner_sa, expert_sa, f_net)
+        #         loss = f_expert.mean() - f_learner.mean() + 10 * gp
+        #         loss.backward()
+        #         f_opt.step()
+        #     disc_steps += 1
 
     return np.float32(best_eval_reward)

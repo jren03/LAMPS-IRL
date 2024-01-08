@@ -27,8 +27,6 @@ def run(cfg: omegaconf.DictConfig):
         "use_policy_buffer_adv_update": cfg.use_policy_buffer_adv_update,
         "model_exp_ratio": cfg.overrides.model_exp_ratio,
         "policy_exp_ratio": cfg.overrides.policy_exp_ratio,
-        "sac_expert_reset_ratio": cfg.sac_expert_reset_ratio,
-        "schedule_sac_ratio": cfg.schedule_sac_ratio,
     }
     for k, v in cfgs.items():
         if v != 0.0 and v is not False:

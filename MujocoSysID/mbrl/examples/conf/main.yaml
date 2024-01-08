@@ -12,8 +12,14 @@ debug_mode: false
 use_yuda_default: false
 add_exp_to_replay_buffer: false
 use_policy_buffer_adv_update: false
-sac_expert_reset_ratio: 0.0
-schedule_sac_ratio: false
+
+schedule_sac_ratio: true
+sac_schedule:
+  start_ratio: 0.2
+  mid_ratio: 0.2
+  end_ratio: 0.1
+  m1: 30_000
+  m2: 100_000
 
 eval_frequency: 10000
 
@@ -24,7 +30,11 @@ from_end: false
 train_discriminator: true
 update_with_model: true
 disc:
-  lr: 8e-4
+  start_lr: 8e-4
+  mid_lr: 8e-4
+  end_lr: 8e-4
+  m1: 30_000
+  m2: 100_000
   freq_train_disc: 5000
   batch_size: 4096
   num_updates_per_step: 4
