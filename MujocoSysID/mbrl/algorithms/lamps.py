@@ -259,13 +259,18 @@ def train(
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
 
+    sac_reset_ratio = cfg.sac_expert_reset_ratio
     sac_reset_schedule = np.array(
         [
-            [cfg.sac_expert_reset_ratio, cfg.sac_expert_reset_ratio, 30000],
-            [cfg.sac_expert_reset_ratio, 0.1, 100000],
+            [sac_reset_ratio, sac_reset_ratio, 30000],
+            [sac_reset_ratio, 0.1, 100000],
         ]
     )
     ratio_lag = 0
+    if cfg.schedule_sac_ratio:
+        print(
+            f"{PrintColors.OKBLUE}Scheduling SAC reset ratio: {sac_reset_schedule}{PrintColors.ENDC}"
+        )
 
     rollout_batch_size = (
         cfg.overrides.effective_model_rollouts_per_step * cfg.algorithm.freq_train_model
@@ -357,8 +362,6 @@ def train(
                     ) = mbrl.util.math.get_ratio(
                         sac_reset_schedule, env_steps, ratio_lag
                     )
-                else:
-                    sac_reset_ratio = cfg.sac_expert_reset_ratio
                 reset_to_exp_states = rng.random() < sac_reset_ratio
                 if cfg.use_yuda_default:
                     rollout_buffer = replay_buffer
