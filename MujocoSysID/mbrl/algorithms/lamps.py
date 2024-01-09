@@ -265,9 +265,9 @@ def train(
     sac_reset_ratio = cfg.sac_schedule.start_ratio
     sac_reset_schedule = np.array(
         [
-            [sac_reset_ratio, sac_reset_ratio, cfg.sac_schedule.m1],
+            [sac_reset_ratio, cfg.sac_schedule.mid_ratio, cfg.sac_schedule.m1],
             [
-                sac_reset_ratio,
+                cfg.sac_schedule.mid_ratio,
                 cfg.sac_schedule.end_ratio,
                 cfg.sac_schedule.m2,
             ],
@@ -287,9 +287,10 @@ def train(
         ]
     )
     disc_ratio_lag = 0
-    print(f"{PrintColors.OKBLUE}Discriminator lr schedule:")
-    pp.pprint(disc_lr_schedule)
-    print(PrintColors.ENDC)
+    if cfg.schedule_disc_special:
+        print(f"{PrintColors.OKBLUE}Discriminator lr schedule:")
+        pp.pprint(disc_lr_schedule)
+        print(PrintColors.ENDC)
 
     rollout_batch_size = (
         cfg.overrides.effective_model_rollouts_per_step * cfg.algorithm.freq_train_model
@@ -400,13 +401,18 @@ def train(
 
                 # ----------------------- Discriminator Training with Model ----------
                 if cfg.update_with_model and cfg.train_discriminator:
-                    (
-                        disc_lr_schedule,
-                        disc_lr,
-                        disc_ratio_lag,
-                    ) = mbrl.util.math.get_ratio(
-                        disc_lr_schedule, env_steps, disc_ratio_lag
-                    )
+                    if cfg.schedule_disc_special:
+                        (
+                            disc_lr_schedule,
+                            disc_lr,
+                            disc_ratio_lag,
+                        ) = mbrl.util.math.get_ratio(
+                            disc_lr_schedule, env_steps, disc_ratio_lag
+                        )
+                    elif not disc_steps == 0:
+                        disc_lr = cfg.disc.start_lr / disc_steps
+                    else:
+                        disc_lr = cfg.disc.start_lr
                     f_opt = OAdam(f_net.parameters(), lr=disc_lr)
 
                     S_curr, A_curr, s = sample(

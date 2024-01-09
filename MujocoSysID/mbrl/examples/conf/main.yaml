@@ -29,6 +29,7 @@ from_end: false
 
 train_discriminator: true
 update_with_model: true
+schedule_disc_special: false
 disc:
   start_lr: 8e-4
   mid_lr: 8e-4
