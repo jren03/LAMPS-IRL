@@ -26,6 +26,7 @@ from mbrl.util.fetch_demos import fetch_demos
 from mbrl.models.discriminator import Discriminator
 from mbrl.util.oadam import OAdam
 from mbrl.util.common import gradient_penalty, PrintColors
+from mbrl.util.discriminator_replay_buffer import DiscriminatorReplayBuffer
 
 import d4rl
 from tqdm import tqdm
@@ -103,6 +104,8 @@ def sample(
     env: gym.Env,
     agent: SACAgent,
     num_episodes: int,
+    replay_buffer: DiscriminatorReplayBuffer,
+    no_regret=False,
 ) -> float:
     states, actions = [], []
     env_steps = 0
@@ -115,11 +118,10 @@ def sample(
             actions.append(action)
             obs, _, done, _ = env.step(action)
             env_steps += 0
-    return (
-        torch.from_numpy(np.array(states)),
-        torch.from_numpy(np.array(actions)),
-        env_steps,
-    )
+    states_np, actions_np = np.array(states), np.array(actions)
+    if no_regret:
+        replay_buffer.add(states_np, actions_np)
+    return states_np, actions_np, env_steps
 
 
 def maybe_replace_sac_buffer(
@@ -291,6 +293,14 @@ def train(
         print(f"{PrintColors.OKBLUE}Discriminator lr schedule:")
         pp.pprint(disc_lr_schedule)
         print(PrintColors.ENDC)
+    if cfg.no_regret:
+        print(f"{PrintColors.OKBLUE} No regret discriminator training")
+        print(PrintColors.ENDC)
+    else:
+        print(f"{PrintColors.OKBLUE} Best response discriminator training")
+        print(PrintColors.ENDC)
+
+    drb = DiscriminatorReplayBuffer(obs_shape[0], act_shape[0])
 
     rollout_batch_size = (
         cfg.overrides.effective_model_rollouts_per_step * cfg.algorithm.freq_train_model
@@ -416,9 +426,13 @@ def train(
                     f_opt = OAdam(f_net.parameters(), lr=disc_lr)
 
                     S_curr, A_curr, s = sample(
-                        test_env, agent, cfg.disc.num_traj_samples
+                        test_env, agent, cfg.disc.num_traj_samples, drb, cfg.no_regret
                     )
-                    learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
+                    if cfg.no_regret and len(drb) > cfg.disc.batch_size:
+                        S_curr, A_curr = drb.sample(cfg.disc.batch_size)
+                    learner_sa_pairs = torch.cat(
+                        (torch.from_numpy(S_curr), torch.from_numpy(A_curr)), dim=1
+                    ).to(cfg.device)
                     # env_steps += s
                     # tbar.update(s)
                     for _ in range(cfg.disc.num_updates_per_step):

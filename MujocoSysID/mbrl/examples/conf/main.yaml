@@ -13,6 +13,7 @@ use_yuda_default: false
 add_exp_to_replay_buffer: false
 use_policy_buffer_adv_update: false
 
+
 schedule_sac_ratio: true
 sac_schedule:
   start_ratio: 0.2
@@ -30,6 +31,7 @@ from_end: false
 train_discriminator: true
 update_with_model: true
 schedule_disc_special: false
+no_regret: false
 disc:
   start_lr: 8e-4
   mid_lr: 8e-4
