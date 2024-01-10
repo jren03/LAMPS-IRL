@@ -23,13 +23,16 @@ import mbrl.util.math
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
 from mbrl.util.fetch_demos import fetch_demos
-from mbrl.models.discriminator import Discriminator
+from mbrl.models.discriminator import Discriminator, DiscriminatorEnsemble
 from mbrl.util.oadam import OAdam
 from mbrl.util.common import gradient_penalty, PrintColors
 from mbrl.util.discriminator_replay_buffer import DiscriminatorReplayBuffer
 
 import d4rl
 from tqdm import tqdm
+
+import stable_baselines3 as sb3
+from pathlib import Path
 
 MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("epoch", "E", "int"),
@@ -117,10 +120,44 @@ def sample(
             action = agent.act(obs)
             actions.append(action)
             obs, _, done, _ = env.step(action)
-            env_steps += 0
+            env_steps += 1
     states_np, actions_np = np.array(states), np.array(actions)
     if no_regret:
         replay_buffer.add(states_np, actions_np)
+    return states_np, actions_np, env_steps
+
+
+def sample_from_learned_model(
+    env: gym.Env,
+    model_env: mbrl.models.ModelEnv,
+    agent: sb3.SAC,
+    num_episodes: int,
+    rollout_horizon: int,
+):
+    states, actions = [], []
+    env_steps = 0
+    for episode in range(num_episodes):
+        real_env_obs = env.reset()
+        real_env_obs = real_env_obs.reshape(1, -1)
+        model_state = model_env.reset(
+            initial_obs_batch=cast(np.ndarray, real_env_obs),
+            return_as_np=True,
+        )
+        obs = real_env_obs
+        for _ in range(rollout_horizon):
+            breakpoint()
+            action = agent.predict(obs, deterministic=True)
+            if isinstance(action, tuple):
+                action = action[0]
+            states.append(obs)
+            actions.append(action)
+            obs, _, done, model_state = model_env.step(
+                action, model_state, sample=False
+            )
+            env_steps += 1
+            if done:
+                break
+    states_np, actions_np = np.array(states), np.array(actions)
     return states_np, actions_np, env_steps
 
 
@@ -165,9 +202,27 @@ def train(
         cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
     )
 
+    if cfg.train_disc_in_model:
+        # load in SB3 model used to collect data
+        expert_base_path = Path(
+            "/share/portal/jlr429/pessimistic-irl/fast_irl/experts/"
+        )
+        env_name = cfg.overrides.env.lower()
+        if "humanoid" in env_name:
+            env_name = "Humanoid-v3"
+        elif "ant" in env_name and "truncated" in env_name:
+            env_name = "Ant-v3"
+        else:
+            env_name = env_name.replace("gym___", "")
+        expert_path = Path(expert_base_path, f"{env_name}/expert")
+        expert_sb3_agent = sb3.SAC.load(str(expert_path))
+        print(f"{PrintColors.BOLD}Loading expert agent from {expert_path}")
+
     is_maze = "maze" in cfg.overrides.env
     expert_dataset = fetch_demos(
-        cfg.overrides.env, zero_out_rewards=cfg.train_discriminator
+        cfg.overrides.env,
+        zero_out_rewards=cfg.train_discriminator,
+        use_mbrl_demos=cfg.use_mbrl_demos,
     )
 
     work_dir = work_dir or os.getcwd()
@@ -294,12 +349,11 @@ def train(
         pp.pprint(disc_lr_schedule)
         print(PrintColors.ENDC)
     if cfg.no_regret:
-        print(f"{PrintColors.OKBLUE} No regret discriminator training")
+        print(f"{PrintColors.OKBLUE}No regret discriminator training")
         print(PrintColors.ENDC)
     else:
-        print(f"{PrintColors.OKBLUE} Best response discriminator training")
+        print(f"{PrintColors.OKBLUE}Best response discriminator training")
         print(PrintColors.ENDC)
-
     drb = DiscriminatorReplayBuffer(obs_shape[0], act_shape[0])
 
     rollout_batch_size = (
@@ -314,7 +368,12 @@ def train(
         print(
             f"{PrintColors.OKBLUE}Training with discriminator function{PrintColors.ENDC}"
         )
-        f_net = Discriminator(env).to(cfg.device)
+        if cfg.disc_ensemble:
+            f_net = DiscriminatorEnsemble(
+                env, reduction=cfg.disc_ensemble_reduction
+            ).to(cfg.device)
+        else:
+            f_net = Discriminator(env).to(cfg.device)
         f_opt = OAdam(f_net.parameters(), lr=disc_lr)
         model_env = mbrl.models.ModelEnv(
             env, dynamics_model, termination_fn, f_net, generator=torch_generator
@@ -351,6 +410,16 @@ def train(
         )
         obs, done = None, False
 
+        if cfg.debug_mode and cfg.train_disc_in_model:
+            # ! debug purposes only, remember to remove
+            S_curr, A_curr, s = sample_from_learned_model(
+                test_env,
+                model_env,
+                expert_sb3_agent,
+                cfg.disc.num_traj_samples,
+                rollout_length,
+            )
+
         for steps_epoch in range(cfg.overrides.epoch_length):
             if steps_epoch == 0 or done:
                 obs, done = env.reset(), False
@@ -369,7 +438,10 @@ def train(
             replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
 
             # --------------- Model Training -----------------
-            if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
+            if (
+                cfg.debug_mode
+                or (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0
+            ):
                 # ! reset to 50/50 learner/expert states
                 use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
                 model_train_buffer = replay_buffer
@@ -410,7 +482,9 @@ def train(
                 )
 
                 # ----------------------- Discriminator Training with Model ----------
-                if cfg.update_with_model and cfg.train_discriminator:
+                if cfg.debug_mode or (
+                    cfg.update_with_model and cfg.train_discriminator
+                ):
                     if cfg.schedule_disc_special:
                         (
                             disc_lr_schedule,
@@ -425,9 +499,22 @@ def train(
                         disc_lr = cfg.disc.start_lr
                     f_opt = OAdam(f_net.parameters(), lr=disc_lr)
 
-                    S_curr, A_curr, s = sample(
-                        test_env, agent, cfg.disc.num_traj_samples, drb, cfg.no_regret
-                    )
+                    if cfg.train_disc_in_model:
+                        S_curr, A_curr, s = sample_from_learned_model(
+                            test_env,
+                            model_env,
+                            agent,
+                            cfg.disc.num_traj_samples,
+                            rollout_length,
+                        )
+                    else:
+                        S_curr, A_curr, s = sample(
+                            test_env,
+                            agent,
+                            cfg.disc.num_traj_samples,
+                            drb,
+                            cfg.no_regret,
+                        )
                     if cfg.no_regret and len(drb) > cfg.disc.batch_size:
                         S_curr, A_curr = drb.sample(cfg.disc.batch_size)
                     learner_sa_pairs = torch.cat(
@@ -552,12 +639,18 @@ def train(
                             "rollout_length": rollout_length,
                         },
                     )
+                    if cfg.train_discriminator:
+                        print(f"{disc_lr=}")
                 # if avg_reward > best_eval_reward:
                 #     video_recorder.save(f"{epoch}.mp4")
                 #     best_eval_reward = avg_reward
                 #     agent.sac_agent.save_checkpoint(
                 #         ckpt_path=os.path.join(work_dir, "sac.pth")
                 #     )
+
+                if cfg.train_disc_in_model:
+                    # evaluate learner in learned model
+                    pass
 
             tbar.update(1)
             env_steps += 1

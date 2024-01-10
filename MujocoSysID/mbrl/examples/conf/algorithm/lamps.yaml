@@ -22,6 +22,7 @@ num_eval_episodes: 2
 agent:
   _target_: mbrl.third_party.pytorch_sac_pranz24.sac.SAC
   num_inputs: ???
+  relabel_samples: ${relabel_samples}
   action_space:
     _target_: gym.env.Box
     low: ???

@@ -11,9 +11,11 @@ from mbrl.third_party.pytorch_sac_pranz24.model import (
 )
 from mbrl.third_party.pytorch_sac_pranz24.utils import hard_update, soft_update
 
+from mbrl.util.common import PrintColors as PC
+
 
 class SAC(object):
-    def __init__(self, num_inputs, action_space, args):
+    def __init__(self, num_inputs, relabel_samples, action_space, args):
         self.args = args
         self.gamma = args.gamma
         self.tau = args.tau
@@ -61,9 +63,22 @@ class SAC(object):
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
 
         self.f_net = None
+        self.relabel_samples = relabel_samples
 
     def add_f_net(self, f_net):
         self.f_net = f_net
+        if self.relabel_samples:
+            print(
+                PC.WARNING
+                + "WARNING: SAC is relabeling samples with f_net. This is not standard SAC."
+                + PC.ENDC
+            )
+        else:
+            print(
+                PC.WARNING
+                + "WARNING: SAC is NOT relabeling samples with f_net. This is standard SAC."
+                + PC.ENDC
+            )
 
     def select_action(self, state, batched=False, evaluate=False):
         state = torch.FloatTensor(state)
@@ -314,7 +329,7 @@ class SAC(object):
     @torch.no_grad()
     def _relabel_with_f_net(self, state_batch, action_batch, reward_batch):
         # relabel rewards with f_net
-        if self.f_net is not None:
+        if self.f_net is not None and self.relabel_samples:
             sa_pair = torch.cat((state_batch, action_batch), dim=1)
             reward_batch = -self.f_net(sa_pair).reshape(reward_batch.shape)
         return reward_batch

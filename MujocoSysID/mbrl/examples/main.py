@@ -27,6 +27,10 @@ def run(cfg: omegaconf.DictConfig):
         "use_policy_buffer_adv_update": cfg.use_policy_buffer_adv_update,
         "model_exp_ratio": cfg.overrides.model_exp_ratio,
         "policy_exp_ratio": cfg.overrides.policy_exp_ratio,
+        "use_mbrl_demos": cfg.use_mbrl_demos,
+        "disc_ensemble": cfg.disc_ensemble,
+        "disc_ensemble_reduction": cfg.disc_ensemble_reduction,
+        "disc_binary_reward": cfg.disc_binary_reward,
     }
     for k, v in cfgs.items():
         if v != 0.0 and v is not False:
@@ -34,6 +38,9 @@ def run(cfg: omegaconf.DictConfig):
     print(
         f"Making {cfg.overrides.num_steps / cfg.eval_frequency} evaluations{PrintColors.ENDC}"
     )
+
+    if cfg.debug_mode:
+        print(PrintColors.WARNING + "Running in debug mode" + PrintColors.ENDC)
 
     env, term_fn, reward_fn = mbrl.util.env.EnvHandler.make_env(cfg)
     np.random.seed(cfg.seed)
