@@ -49,6 +49,7 @@ def rollout_model_and_populate_sac_buffer(
     sac_samples_action: bool,
     rollout_horizon: int,
     batch_size: int,
+    fixed_reward_value: bool = False,
 ):
     batch = replay_buffer.sample(batch_size)
     initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
@@ -63,13 +64,22 @@ def rollout_model_and_populate_sac_buffer(
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
         )
-        sac_buffer.add_batch(
-            obs[~accum_dones],
-            action[~accum_dones],
-            pred_next_obs[~accum_dones],
-            pred_rewards[~accum_dones, 0],
-            pred_dones[~accum_dones, 0],
-        )
+        if fixed_reward_value:
+            sac_buffer.add_batch(
+                obs[~accum_dones],
+                action[~accum_dones],
+                pred_next_obs[~accum_dones],
+                np.zeros_like(pred_rewards[~accum_dones, 0]),
+                pred_dones[~accum_dones, 0],
+            )
+        else:
+            sac_buffer.add_batch(
+                obs[~accum_dones],
+                action[~accum_dones],
+                pred_next_obs[~accum_dones],
+                pred_rewards[~accum_dones, 0],
+                pred_dones[~accum_dones, 0],
+            )
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
 
@@ -263,6 +273,7 @@ def train(
         obs_type=dtype,
         action_type=dtype,
         reward_type=dtype,
+        fixed_reward_value=0.0 if cfg.disc_binary_reward else None,
     )
     random_explore = cfg.algorithm.random_initial_explore
     mbrl.util.common.rollout_agent_trajectories(
@@ -283,6 +294,7 @@ def train(
         obs_type=dtype,
         action_type=dtype,
         reward_type=dtype,
+        fixed_reward_value=1.0 if cfg.disc_binary_reward else None,
     )
     if cfg.add_exp_to_replay_buffer:
         replay_buffer.add_batch(
@@ -479,6 +491,7 @@ def train(
                     cfg.algorithm.sac_samples_action,
                     rollout_length,
                     rollout_batch_size,
+                    fixed_reward_value=cfg.disc_binary_reward,
                 )
 
                 # ----------------------- Discriminator Training with Model ----------

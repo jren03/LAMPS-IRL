@@ -29,12 +29,13 @@ def run(cfg: omegaconf.DictConfig):
         "policy_exp_ratio": cfg.overrides.policy_exp_ratio,
         "use_mbrl_demos": cfg.use_mbrl_demos,
         "disc_ensemble": cfg.disc_ensemble,
-        "disc_ensemble_reduction": cfg.disc_ensemble_reduction,
         "disc_binary_reward": cfg.disc_binary_reward,
     }
     for k, v in cfgs.items():
         if v != 0.0 and v is not False:
             print(f"{k}: {v}")
+        if k == "disc_ensemble" and v:
+            print(f"disc_ensemble_reduction: {cfg.disc_ensemble_reduction}")
     print(
         f"Making {cfg.overrides.num_steps / cfg.eval_frequency} evaluations{PrintColors.ENDC}"
     )

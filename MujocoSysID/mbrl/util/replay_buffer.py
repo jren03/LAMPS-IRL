@@ -434,6 +434,7 @@ class ReplayBuffer:
         reward_type: Type = np.float32,
         rng: Optional[np.random.Generator] = None,
         max_trajectory_length: Optional[int] = None,
+        fixed_reward_value: Optional[float] = None,
     ):
         self.cur_idx = 0
         self.capacity = capacity
@@ -456,6 +457,7 @@ class ReplayBuffer:
             self._rng = rng
 
         self._start_last_trajectory = 0
+        self.fixed_reward_value = fixed_reward_value
 
     @property
     def stores_trajectories(self) -> bool:
@@ -531,6 +533,10 @@ class ReplayBuffer:
             reward (float): the reward at time t + 1.
             done (bool): a boolean indicating whether the episode ended or not.
         """
+
+        if self.fixed_reward_value is not None:
+            reward = self.fixed_reward_value
+
         self.obs[self.cur_idx] = obs
         self.next_obs[self.cur_idx] = next_obs
         self.action[self.cur_idx] = action
@@ -565,6 +571,8 @@ class ReplayBuffer:
             reward (float): the batch of rewards at time t + 1.
             done (bool): a batch of booleans terminal indicators.
         """
+        if self.fixed_reward_value is not None:
+            reward = np.ones_like(reward) * self.fixed_reward_value
 
         def copy_from_to(buffer_start, batch_start, how_many):
             buffer_slice = slice(buffer_start, buffer_start + how_many)
