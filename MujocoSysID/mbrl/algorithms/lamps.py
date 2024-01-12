@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 import os
 from typing import Optional, Sequence, cast
+import time
 
 import gym
 import hydra.utils
@@ -440,6 +441,7 @@ def train(
             if steps_epoch == 0 or done:
                 obs, done = env.reset(), False
             # --- Doing env step and adding to model dataset ---
+            # start_time = time.time()
             next_obs, reward, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
                 env, obs, agent, {}, replay_buffer, policy_buffer
             )
@@ -452,6 +454,7 @@ def train(
                 exp_done,
             ) = expert_replay_buffer.sample_one()
             replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
+            # print(f"Time for env step: {time.time() - start_time}")
 
             # --------------- Model Training -----------------
             if (
@@ -459,6 +462,7 @@ def train(
                 or (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0
             ):
                 # ! reset to 50/50 learner/expert states
+                # start_time = time.time()
                 use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
                 model_train_buffer = replay_buffer
                 mbrl.util.common.train_model_and_save_model_and_data(
@@ -468,10 +472,14 @@ def train(
                     model_train_buffer,
                     work_dir=work_dir,
                 )
+                # print(
+                #     f"Time for model training: {time.time() - start_time}, {len(replay_buffer)=}"
+                # )
 
                 # --------- Rollout new model and store imagined trajectories --------
                 # Batch all rollouts for the next freq_train_model steps together
                 # ! reset to expert states
+                # start_time = time.time()
                 if cfg.schedule_sac_ratio:
                     (
                         sac_reset_schedule,
@@ -497,6 +505,7 @@ def train(
                     rollout_batch_size,
                     fixed_reward_value=cfg.disc_binary_reward,
                 )
+                # print(f"Time for rollout: {time.time() - start_time}")
 
                 # ----------------------- Discriminator Training with Model ----------
                 if cfg.debug_mode or (
@@ -571,6 +580,8 @@ def train(
                     )
 
             # --------------- Agent Training -----------------
+
+            # start_time = time.time()
             for _ in range(cfg.overrides.num_sac_updates_per_step):
                 use_real_data = rng.random() < cfg.algorithm.real_data_ratio
                 # ! which buffer is always sac_buffer because use_real_data is always False
@@ -617,6 +628,7 @@ def train(
                 updates_made += 1
                 if not silent and updates_made % cfg.log_frequency_agent == 0:
                     logger.dump(updates_made, save=True)
+            # print(f"Time for agent training: {time.time() - start_time}")
 
             # ------ Discriminator Training ------
             if (
@@ -625,6 +637,7 @@ def train(
                 and updates_made != 0
                 and (updates_made) % cfg.disc.freq_train_disc == 0
             ):
+                # start_time = time.time()
                 # print(f"Discriminator Training: {learning_rate_used}, {disc_steps}")
                 if not disc_steps == 0:
                     disc_lr = cfg.disc.start_lr / disc_steps
@@ -667,6 +680,7 @@ def train(
                     loss.backward()
                     f_opt.step()
                 disc_steps += 1
+                # print(f"Time for discriminator training: {time.time() - start_time}")
                 # print(f"REEE 2: {updates_made}")
 
             # ------ Epoch ended (evaluate and save model) ------
@@ -674,6 +688,7 @@ def train(
                 epoch += 1
             if (env_steps + 1) % cfg.eval_frequency == 0:
                 if not is_maze:
+                    # start_time = time.time()
                     avg_reward = evaluate(
                         test_env,
                         agent,
@@ -691,6 +706,7 @@ def train(
                             "sac_reset_ratio": sac_reset_ratio,
                         },
                     )
+                    # print(f"Time for evaluation: {time.time() - start_time}")
                 else:
                     avg_reward, success_rate = evaluate(
                         test_env,
@@ -709,8 +725,6 @@ def train(
                             "rollout_length": rollout_length,
                         },
                     )
-                    if cfg.train_discriminator:
-                        print(f"{disc_lr=}, {disc_steps=}")
                 # if avg_reward > best_eval_reward:
                 #     video_recorder.save(f"{epoch}.mp4")
                 #     best_eval_reward = avg_reward
