@@ -36,6 +36,11 @@ def run(cfg: omegaconf.DictConfig):
             print(f"{k}: {v}")
         if k == "disc_ensemble" and v:
             print(f"disc_ensemble_reduction: {cfg.disc_ensemble_reduction}")
+    if cfg.train_discriminator and not cfg.update_with_model:
+        print(f"freq_train_disc: {cfg.disc.freq_train_disc}")
+        print(f"disc_lr: {cfg.disc.start_lr:.5E}")
+
+    print(f"seed: {cfg.seed}")
     print(
         f"Making {cfg.overrides.num_steps / cfg.eval_frequency} evaluations{PrintColors.ENDC}"
     )

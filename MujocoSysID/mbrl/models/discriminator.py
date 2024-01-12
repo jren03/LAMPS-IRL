@@ -32,6 +32,7 @@ class DiscriminatorEnsemble(nn.Module):
         )
         # self.forward_vmap = torch.vmap(lambda disc, inputs: disc(inputs))
         self.reduction = reduction
+        print(f"Using {reduction} reduction for discriminator ensemble")
 
     def forward(self, inputs):
         outputs = torch.stack([disc(inputs) for disc in self.ensemble])
@@ -40,6 +41,8 @@ class DiscriminatorEnsemble(nn.Module):
             return torch.min(outputs, dim=0)[0]
         elif self.reduction == "mean":
             return torch.mean(outputs, dim=0)
+        elif self.reduction == "median":
+            return torch.median(outputs, dim=0)[0]
         elif self.reduction == "max":
             return torch.max(outputs, dim=0)[0]
         else:

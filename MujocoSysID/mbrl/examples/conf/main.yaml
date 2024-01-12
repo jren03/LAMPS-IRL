@@ -16,7 +16,7 @@ use_policy_buffer_adv_update: false
 use_mbrl_demos: false
 train_disc_in_model: false
 
-disc_ensemble: false
+disc_ensemble: true
 disc_ensemble_reduction: "min"
 
 disc_binary_reward: false
@@ -39,7 +39,7 @@ relabel_samples: true
 no_regret: false
 
 train_discriminator: true
-update_with_model: true
+update_with_model: false
 schedule_disc_special: false
 disc:
   start_lr: 8e-4
@@ -47,8 +47,8 @@ disc:
   end_lr: 8e-4
   m1: 30_000
   m2: 100_000
-  freq_train_disc: 5000
   batch_size: 4096
+  freq_train_disc: 5000
   num_updates_per_step: 4
   num_traj_samples: 4
 
