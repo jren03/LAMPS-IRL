@@ -387,7 +387,7 @@ def train(
         )
         if cfg.disc_ensemble:
             f_net = DiscriminatorEnsemble(
-                env, reduction=cfg.disc_ensemble_reduction
+                env, n_discriminators=cfg.n_discs, reduction=cfg.disc_ensemble_reduction
             ).to(cfg.device)
         else:
             f_net = Discriminator(env).to(cfg.device)

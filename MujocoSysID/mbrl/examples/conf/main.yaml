@@ -41,6 +41,7 @@ no_regret: false
 train_discriminator: true
 update_with_model: false
 schedule_disc_special: false
+n_discs: 7
 disc:
   start_lr: 8e-4
   mid_lr: 8e-4

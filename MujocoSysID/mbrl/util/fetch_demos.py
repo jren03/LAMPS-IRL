@@ -14,6 +14,9 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
     env_name = env_name.replace("gym___", "")
     if "truncated" in env_name.lower():
         env_name = f"{env_name.split('_')[0].capitalize()}-v3"
+        is_truncated = True
+    else:
+        is_truncated = False
     if "maze" in env_name:
         e = gym.make(env_name)
         dataset = e.get_dataset()
@@ -98,9 +101,9 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
         else:
             project_root = Path("/share/portal/jlr429/pessimistic-irl/")
         if use_mbrl_demos:
-            if "humanoid" in env_name.lower():
+            if is_truncated and "humanoid" in env_name.lower():
                 data_env_name = "humanoid_truncated_obs"
-            elif "ant" in env_name.lower():
+            elif is_truncated and "ant" in env_name.lower():
                 data_env_name = "ant_truncated_obs"
             else:
                 data_env_name = env_name
@@ -145,7 +148,9 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
                     dataset[key], -1 + EPS, 1 - EPS
                 )  # due to tanh in TD3
 
-        if "ant" in env_name.lower() or "humanoid" in env_name.lower():
+        if is_truncated and (
+            "ant" in env_name.lower() or "humanoid" in env_name.lower()
+        ):
             # get qpos and qvel dimensions
             print(f"Old dataset shape: {dataset['observations'].shape}")
             env = gym.make(env_name)

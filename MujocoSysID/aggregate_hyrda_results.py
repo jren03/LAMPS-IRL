@@ -13,7 +13,7 @@ def is_non_zero_file(fpath):
 
 def main(env_name, override, partition, date):
     algs = ["lamps", "sysid", "mbpo"]
-    target_entries = 100
+    target_entries = 20
 
     for alg in algs:
         base_dir = Path("exp", alg, partition, env_name)
@@ -42,7 +42,7 @@ def main(env_name, override, partition, date):
                 )
                 continue
 
-            if len(df) < target_entries - 20:
+            if len(df) < target_entries - 20 or len(df) < 8:
                 print(
                     f"{PrintColors.FAIL}Skipping {results_file} because it has {len(df)} entries{PrintColors.ENDC}"
                 )
