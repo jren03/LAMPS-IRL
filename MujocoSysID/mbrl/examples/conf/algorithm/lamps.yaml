@@ -39,3 +39,4 @@ agent:
     hidden_size: ${overrides.sac_hidden_size}
     device: ${device}
     lr: ${overrides.sac_lr}
+    schedule_lr: ${sac_schedule_lr}

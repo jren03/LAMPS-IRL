@@ -30,6 +30,7 @@ def run(cfg: omegaconf.DictConfig):
         "use_mbrl_demos": cfg.use_mbrl_demos,
         "disc_ensemble": cfg.disc_ensemble,
         "disc_binary_reward": cfg.disc_binary_reward,
+        "sac_schedule_lr": cfg.sac_schedule_lr,
     }
     for k, v in cfgs.items():
         if v != 0.0 and v is not False:

@@ -21,6 +21,7 @@ disc_ensemble_reduction: "min"
 
 disc_binary_reward: false
 
+sac_schedule_lr: false
 schedule_sac_ratio: true
 sac_schedule:
   start_ratio: 0.5
@@ -32,8 +33,9 @@ sac_schedule:
 eval_frequency: 10000
 
 silent: true
-shaky: true
 from_end: false
+shaky: true
+p_tremble: -1
 
 relabel_samples: true
 no_regret: false
