@@ -65,6 +65,14 @@ class SAC(object):
         self.f_net = None
         self.relabel_samples = relabel_samples
 
+        if args.torch_compile:
+            self._compile_networks()
+
+    def _compile_networks(self):
+        self.critic = torch.compile(self.critic)
+        self.critic_target = torch.compile(self.critic_target)
+        self.policy = torch.compile(self.policy)
+
     def add_f_net(self, f_net):
         self.f_net = f_net
         if self.relabel_samples:

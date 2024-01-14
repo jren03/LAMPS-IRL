@@ -32,6 +32,8 @@ sac_schedule:
 
 eval_frequency: 10000
 
+sac_in_real: false
+
 silent: true
 from_end: false
 shaky: true
@@ -58,6 +60,7 @@ disc:
 experiment: default
 seed: 1
 
+torch_compile: true
 
 root_dir: "./exp"
 hydra:

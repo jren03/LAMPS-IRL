@@ -409,10 +409,16 @@ def train(
         weight_decay=cfg.overrides.model_wd,
         logger=None if silent else logger,
     )
+
+    if cfg.torch_compile:
+        dynamics_model = torch.compile(dynamics_model)
+        f_net = torch.compile(dynamics_model)
+
     best_eval_reward = -np.inf
     epoch = 0
     disc_steps = 0
     sac_buffer = None
+
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
@@ -495,16 +501,29 @@ def train(
                     rollout_buffer = expert_replay_buffer
                 else:
                     rollout_buffer = policy_buffer
-                rollout_model_and_populate_sac_buffer(
-                    model_env,
-                    rollout_buffer,
-                    agent,
-                    sac_buffer,
-                    cfg.algorithm.sac_samples_action,
-                    rollout_length,
-                    rollout_batch_size,
-                    fixed_reward_value=cfg.disc_binary_reward,
-                )
+
+                if cfg.sac_in_real:
+                    rollout_model_and_populate_sac_buffer(
+                        test_env,
+                        rollout_buffer,
+                        agent,
+                        sac_buffer,
+                        cfg.algorithm.sac_samples_action,
+                        rollout_length,
+                        rollout_batch_size,
+                        fixed_reward_value=cfg.disc_binary_reward,
+                    )
+                else:
+                    rollout_model_and_populate_sac_buffer(
+                        model_env,
+                        rollout_buffer,
+                        agent,
+                        sac_buffer,
+                        cfg.algorithm.sac_samples_action,
+                        rollout_length,
+                        rollout_batch_size,
+                        fixed_reward_value=cfg.disc_binary_reward,
+                    )
                 # print(f"Time for rollout: {time.time() - start_time}")
 
                 # ----------------------- Discriminator Training with Model ----------
