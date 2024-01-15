@@ -60,7 +60,7 @@ disc:
 experiment: default
 seed: 1
 
-torch_compile: true
+torch_compile: false
 
 root_dir: "./exp"
 hydra:
