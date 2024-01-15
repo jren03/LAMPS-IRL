@@ -1,6 +1,7 @@
 import gym
 import numpy as np
-from mbrl.util.common import PrintColors, HiddenPrints
+from mbrl.util.common import PrintColors as PC
+from mbrl.util.common import HiddenPrints
 
 
 def _get_env_name(env):
@@ -16,9 +17,7 @@ class TremblingHandWrapper(gym.Wrapper):
         super().__init__(env)
         self.env = env
         self.p_tremble = p_tremble
-        print(
-            f"{PrintColors.BOLD}{_get_env_name(self.env)} {p_tremble=}{PrintColors.ENDC}"
-        )
+        print(f"{PC.BOLD}{_get_env_name(self.env)} {p_tremble=}{PC.ENDC}")
 
     def reset(self):
         return self.env.reset()
@@ -29,14 +28,30 @@ class TremblingHandWrapper(gym.Wrapper):
         return self.env.step(action)
 
 
+class LearnerRewardWrapper(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self.env = env
+        self.low = env.action_space.low
+        self.high = env.action_space.high
+        print(PC.BOLD + "Wrapping env in LearnerRewardWrapper" + PC.ENDC)
+
+    def reset(self):
+        obs = self.env.reset()
+        return obs
+
+    def step(self, action):
+        next_state, _, done, info = self.env.step(action)
+        reward = 0.0
+        return next_state, reward, done, info
+
+
 class GoalWrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
         self.env = env
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(31,))
-        print(
-            f"{PrintColors.OKBLUE}Goal Wrapping{_get_env_name(self.env)}{PrintColors.ENDC}"
-        )
+        print(f"{PC.OKBLUE}Goal Wrapping{_get_env_name(self.env)}{PC.ENDC}")
 
     def reset(self):
         with HiddenPrints():

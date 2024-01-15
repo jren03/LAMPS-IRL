@@ -167,7 +167,8 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
             print(f"New dataset shape: {dataset['observations'].shape}")
 
     if zero_out_rewards:
-        dataset["rewards"] = np.zeros_like(dataset["rewards"])
+        # dataset["rewards"] = np.zeros_like(dataset["rewards"])
+        dataset["rewards"] = np.ones_like(dataset["rewards"])
 
     print("-" * 80)
     print(f"{dataset_path=}")

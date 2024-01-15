@@ -14,12 +14,6 @@ add_exp_to_replay_buffer: false
 use_policy_buffer_adv_update: false
 
 use_mbrl_demos: false
-train_disc_in_model: false
-
-disc_ensemble: true
-disc_ensemble_reduction: "min"
-
-disc_binary_reward: false
 
 sac_schedule_lr: false
 schedule_sac_ratio: true
@@ -27,12 +21,10 @@ sac_schedule:
   start_ratio: 0.5
   mid_ratio: 0.5
   end_ratio: 0.2
-  m1: 20_000
+  m1: 30_000
   m2: 100_000
 
 eval_frequency: 10000
-
-sac_in_real: false
 
 silent: true
 from_end: false
@@ -43,19 +35,7 @@ relabel_samples: true
 no_regret: false
 
 train_discriminator: true
-update_with_model: false
-schedule_disc_special: false
-n_discs: 7
-disc:
-  start_lr: 8e-4
-  mid_lr: 8e-4
-  end_lr: 8e-4
-  m1: 30_000
-  m2: 100_000
-  batch_size: 4096
-  freq_train_disc: 5000
-  num_updates_per_step: 4
-  num_traj_samples: 4
+adversarial_disc_loss: false
 
 experiment: default
 seed: 1

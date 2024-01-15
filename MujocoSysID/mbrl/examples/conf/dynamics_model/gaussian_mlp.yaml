@@ -7,5 +7,6 @@ out_size: ???
 ensemble_size: 1
 hid_size: 200
 deterministic: false
+adversarial_reward_loss: ${adversarial_reward_loss}
 activation_fn_cfg:
   _target_: torch.nn.SiLU
