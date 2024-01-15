@@ -55,6 +55,7 @@ def main(env_name, override, partition, date):
             # Look into .hydra directory for the hydra.yml file
             config_yaml = Path(subdir, ".hydra", "config.yaml")
             if not config_yaml.exists():
+                print(f"{PrintColors.FAIL}Config file does not exist{PrintColors.ENDC}")
                 continue
             # Read the seed number from the hydra.yml file
             with open(config_yaml, "r") as stream:
@@ -72,6 +73,7 @@ def main(env_name, override, partition, date):
                 new_file_path = Path(csv_results_dir, f"{alg}_s{seed}.csv")
 
             if new_file_path.exists():
+                new_file_path = Path(new_file_path.parent, f"{alg}_s{seed+1}_shaky.csv")
                 continue
             shutil.copy(results_file, new_file_path)
             print(f"{results_file} ==> {new_file_path}")
