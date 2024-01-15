@@ -90,8 +90,8 @@ def main(env_abbrv, env_name):
     # steps = 100
     # sz = 1000
 
-    steps = 12
-    sz = 100_000
+    steps = 40
+    sz = 50_000
     for alg in algs_to_colors.keys():
         if alg == "exp":
             plt.plot(
@@ -167,13 +167,15 @@ if __name__ == "__main__":
 
     env_abbr = args.env_name
     if env_abbr == "ant":
-        env_name = "ant_truncated_obs"
+        # env_name = "ant_truncated_obs"
+        env_name = "Ant-v3"
     elif env_abbr == "hc":
         env_name = "HalfCheetah-v3"
     elif env_abbr == "hop":
         env_name = "Hopper-v3"
     elif env_abbr == "hum":
-        env_name = "humanoid_truncated_obs"
+        # env_name = "humanoid_truncated_obs"
+        env_name = "Humanoid-v3"
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
     if "truncated" not in env_name:

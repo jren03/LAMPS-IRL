@@ -13,7 +13,7 @@ def is_non_zero_file(fpath):
 
 def main(env_name, override, partition, date):
     algs = ["lamps", "sysid", "mbpo"]
-    target_entries = 20
+    target_entries = 40
 
     for alg in algs:
         base_dir = Path("exp", alg, partition, env_name)
@@ -62,6 +62,9 @@ def main(env_name, override, partition, date):
                     hydra_yml = yaml.safe_load(stream)
                     seed = hydra_yml.get("seed")
                     shaky = hydra_yml.get("shaky")
+                    freq = int(hydra_yml.get("disc").get("freq_train_disc"))
+                    if freq == 10_000:
+                        continue
                 except yaml.YAMLError as exc:
                     print(exc)
 
@@ -93,13 +96,15 @@ if __name__ == "__main__":
 
     env_abbr = args.env_name
     if env_abbr == "ant":
-        env_name = "ant_truncated_obs"
+        # env_name = "ant_truncated_obs"
+        env_name = "Ant-v3"
     elif env_abbr == "hc":
         env_name = "HalfCheetah-v3"
     elif env_abbr == "hop":
         env_name = "Hopper-v3"
     elif env_abbr == "hum":
-        env_name = "humanoid_truncated_obs"
+        # env_name = "humanoid_truncated_obs"
+        env_name = "Humanoid-v3"
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
     if "truncated" not in env_name:
