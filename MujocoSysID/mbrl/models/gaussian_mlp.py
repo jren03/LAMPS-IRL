@@ -81,6 +81,7 @@ class GaussianMLP(Ensemble):
         learn_logvar_bounds: bool = False,
         adversarial_reward_loss: bool = False,
         use_gp: bool = False,
+        scale_adv_loss: bool = False,
         activation_fn_cfg: Optional[Union[Dict, omegaconf.DictConfig]] = None,
     ):
         super().__init__(
@@ -91,6 +92,7 @@ class GaussianMLP(Ensemble):
         self.out_size = out_size
         self.adversarial_reward_loss = adversarial_reward_loss
         self.use_gp = use_gp
+        self.scale_adv_loss = scale_adv_loss
 
         def create_activation():
             if activation_fn_cfg is None:
@@ -314,6 +316,7 @@ class GaussianMLP(Ensemble):
 
         if separate_buffers:
             # concatenate the two
+            batch_size = model_in.size()[1] // 2
             combined_model_in = torch.cat((model_in, additional_model_in), dim=1)
             combined_target = torch.cat((target, additional_target), dim=1)
             pred_mean, pred_logvar = self.forward(
@@ -321,29 +324,32 @@ class GaussianMLP(Ensemble):
             )
             # model_in is learner, additional_model_in is expert
             # for adversarial loss, take the diff of the last dim
-            # learner_reward_pred = pred_mean[:, :batch_size, -1:]
-            # expert_reward_pred = pred_mean[:, batch_size:, -1:]
-            # if self.use_gp:
+            learner_reward_pred = pred_mean[:, :batch_size, -1:]
+            expert_reward_pred = pred_mean[:, batch_size:, -1:]
             gp = self.ensemble_gradient_penalty(
                 learner_sa=model_in, expert_sa=additional_model_in
             )
-            # else:
-            #     gp = 0
             # want high expert reward, low learner reward
-            # adversarial_reward_loss = (
-            #     learner_reward_pred.mean() - expert_reward_pred.mean() + 10 * gp
-            # )
+            adversarial_reward_loss = (
+                learner_reward_pred.mean() - expert_reward_pred.mean()
+            )
+            if self.scale_adv_loss:
+                adversarial_reward_loss *= 10
 
             if combined_target.shape[0] != self.num_members:
                 combined_target = combined_target.repeat(self.num_members, 1, 1)
             nll = (
                 mbrl.util.math.gaussian_nll(
-                    pred_mean, pred_logvar, combined_target, reduce=False
-                )
+                    pred_mean[:, :, :-1],
+                    pred_logvar[:, :, :-1],
+                    combined_target[:, :, :-1],
+                    reduce=False,
+                )  # don't take the reward for nll
                 .mean((1, 2))  # average over batch and target dimension
                 .sum()
             )  # sum over ensemble dimension
-            nll += 0.01 * (self.max_logvar.sum() - self.min_logvar.sum()) + 10 * gp
+            nll += 0.01 * (self.max_logvar.sum() - self.min_logvar.sum())
+            nll += adversarial_reward_loss + 10 * gp
         else:
             pred_mean, pred_logvar = self.forward(model_in, use_propagation=False)
             if target.shape[0] != self.num_members:
