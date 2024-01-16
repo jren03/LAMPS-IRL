@@ -399,7 +399,7 @@ def train(
                     break  # only update every once in a while
 
                 # since we pass in sac_buffer to both anyway, regular runs is just update_parameters
-                if cfg.bc_reg:
+                if cfg.sac_bc_reg:
                     agent.sac_agent.bc_reg_update_parameters(
                         sac_buffer,
                         expert_replay_buffer,
