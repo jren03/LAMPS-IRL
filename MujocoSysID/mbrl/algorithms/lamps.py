@@ -338,14 +338,19 @@ def train(
             ):
                 # ! reset to 50/50 learner/expert states
                 # start_time = time.time()
-                use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
-                model_train_buffer = replay_buffer
+                # use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
+                model_train_buffer = (
+                    policy_buffer if cfg.adversarial_reward_loss else replay_buffer
+                )
                 mbrl.util.common.train_model_and_save_model_and_data(
                     dynamics_model,
                     model_trainer,
                     cfg.overrides,
                     model_train_buffer,
                     work_dir=work_dir,
+                    additional_buffer=expert_replay_buffer
+                    if cfg.adversarial_reward_loss
+                    else None,
                 )
                 # print(
                 #     f"Time for model training: {time.time() - start_time}, {len(replay_buffer)=}"

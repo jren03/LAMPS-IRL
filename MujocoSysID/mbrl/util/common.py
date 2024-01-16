@@ -17,7 +17,7 @@ import mbrl.models
 import mbrl.planning
 import mbrl.types
 
-from torch import nn
+from torch import add, nn
 from torch.autograd import Variable
 from torch.autograd import grad as torch_grad
 from .replay_buffer import (
@@ -483,6 +483,7 @@ def train_model_and_save_model_and_data(
     replay_buffer: ReplayBuffer,
     work_dir: Optional[Union[str, pathlib.Path]] = None,
     callback: Optional[Callable] = None,
+    additional_buffer: Optional[ReplayBuffer] = None,
 ):
     """Convenience function for training a model and saving results.
 
@@ -506,15 +507,34 @@ def train_model_and_save_model_and_data(
             model and buffer to.
         callback (callable, optional): if provided, this function will be called after
             every training epoch. See :class:`mbrl.models.ModelTrainer` for signature.
+        additional_buffer: (:class:`mbrl.util.ReplayBuffer`): if provided, it is assumed
+            this is the expert_buffer, and `replay_buffer` is the policy_buffer
     """
+    batch_size = (
+        cfg.model_batch_size // 2
+        if additional_buffer is not None
+        else cfg.model_batch_size
+    )
     dataset_train, dataset_val = mbrl.util.common.get_basic_buffer_iterators(
         replay_buffer,
-        cfg.model_batch_size,
+        batch_size,
         cfg.validation_ratio,
         ensemble_size=len(model),
         shuffle_each_epoch=True,
         bootstrap_permutes=cfg.get("bootstrap_permutes", False),
     )
+
+    additional_train = None
+    if additional_buffer is not None:
+        additional_train, _ = mbrl.util.common.get_basic_buffer_iterators(
+            additional_buffer,
+            batch_size,
+            0,
+            ensemble_size=len(model),
+            shuffle_each_epoch=True,
+            bootstrap_permutes=cfg.get("bootstrap_permutes", False),
+        )
+
     if hasattr(model, "update_normalizer"):
         model.update_normalizer(replay_buffer.get_all())
     model_trainer.train(
@@ -524,6 +544,7 @@ def train_model_and_save_model_and_data(
         patience=cfg.get("patience", 1),
         improvement_threshold=cfg.get("improvement_threshold", 0.01),
         callback=callback,
+        additional_train=additional_train,
     )
     if work_dir is not None:
         model.save(str(work_dir))

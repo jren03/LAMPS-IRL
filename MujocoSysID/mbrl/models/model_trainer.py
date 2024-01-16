@@ -78,6 +78,7 @@ class ModelTrainer:
         batch_callback: Optional[Callable] = None,
         evaluate: bool = True,
         silent: bool = False,
+        additional_train: TransitionIterator = None,
     ) -> Tuple[List[float], List[float]]:
         """Trains the model for some number of epochs.
 
@@ -149,8 +150,18 @@ class ModelTrainer:
             else:
                 batch_callback_epoch = None
             batch_losses: List[float] = []
+            additional_train_iter = iter(additional_train) if additional_train else None
+            additional_batch = None
             for batch in tqdm.tqdm(dataset_train, disable=disable_tqdm):
-                loss, meta = self.model.update(batch, self.optimizer)
+                if additional_train_iter:
+                    try:
+                        additional_batch = next(additional_train_iter)
+                    except StopIteration:
+                        additional_train_iter = iter(additional_train)
+                        additional_batch = next(additional_train_iter)
+                loss, meta = self.model.update(
+                    batch, self.optimizer, additional_batch=additional_batch
+                )
                 batch_losses.append(loss)
                 if batch_callback_epoch:
                     batch_callback_epoch(loss, meta, "train")

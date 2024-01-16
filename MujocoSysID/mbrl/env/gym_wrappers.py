@@ -42,7 +42,7 @@ class LearnerRewardWrapper(gym.Wrapper):
 
     def step(self, action):
         next_state, _, done, info = self.env.step(action)
-        reward = 0.0
+        reward = -1.0
         return next_state, reward, done, info
 
 

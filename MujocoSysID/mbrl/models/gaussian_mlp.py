@@ -13,6 +13,8 @@ from torch.nn import functional as F
 
 import mbrl.util.math
 
+from torch.autograd import Variable
+from torch.autograd import grad as torch_grad
 from .model import Ensemble
 from .util import EnsembleLinearLayer, truncated_normal_init
 
@@ -78,6 +80,7 @@ class GaussianMLP(Ensemble):
         propagation_method: Optional[str] = None,
         learn_logvar_bounds: bool = False,
         adversarial_reward_loss: bool = False,
+        use_gp: bool = False,
         activation_fn_cfg: Optional[Union[Dict, omegaconf.DictConfig]] = None,
     ):
         super().__init__(
@@ -87,6 +90,7 @@ class GaussianMLP(Ensemble):
         self.in_size = in_size
         self.out_size = out_size
         self.adversarial_reward_loss = adversarial_reward_loss
+        self.use_gp = use_gp
 
         def create_activation():
             if activation_fn_cfg is None:
@@ -291,20 +295,69 @@ class GaussianMLP(Ensemble):
         loss = F.mse_loss(pred_mean, target, reduction="none").sum((1, 2))
         return loss.sum()
 
-    def _nll_loss(self, model_in: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def _nll_loss(
+        self,
+        model_in: torch.Tensor,
+        target: torch.Tensor,
+        additional_model_in: Optional[torch.Tensor] = None,
+        additional_target: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        separate_buffers = additional_model_in is not None
+
         assert model_in.ndim == target.ndim
         if model_in.ndim == 2:  # add ensemble dimension
             model_in = model_in.unsqueeze(0)
             target = target.unsqueeze(0)
-        pred_mean, pred_logvar = self.forward(model_in, use_propagation=False)
-        if target.shape[0] != self.num_members:
-            target = target.repeat(self.num_members, 1, 1)
-        nll = (
-            mbrl.util.math.gaussian_nll(pred_mean, pred_logvar, target, reduce=False)
-            .mean((1, 2))  # average over batch and target dimension
-            .sum()
-        )  # sum over ensemble dimension
-        nll += 0.01 * (self.max_logvar.sum() - self.min_logvar.sum())
+        if separate_buffers and additional_model_in.ndim == 2:
+            additional_model_in = additional_model_in.unsqueeze(0)
+            additional_target = additional_target.unsqueeze(0)
+
+        if separate_buffers:
+            batch_size = model_in.shape[1]
+            # concatenate the two
+            combined_model_in = torch.cat((model_in, additional_model_in), dim=1)
+            combined_target = torch.cat((target, additional_target), dim=1)
+            pred_mean, pred_logvar = self.forward(
+                combined_model_in, use_propagation=False
+            )
+            # model_in is learner, additional_model_in is expert
+            # for adversarial loss, take the diff of the last dim
+            learner_reward_pred = pred_mean[:, :batch_size, -1:]
+            expert_reward_pred = pred_mean[:, batch_size:, -1:]
+            if self.use_gp:
+                gp = self.ensemble_gradient_penalty(
+                    learner_sa=model_in, expert_sa=additional_model_in
+                )
+            else:
+                gp = 0
+            # want high expert reward, low learner reward
+            adversarial_reward_loss = (
+                learner_reward_pred.mean() - expert_reward_pred.mean() + 10 * gp
+            )
+
+            if target.shape[0] != self.num_members:
+                combined_target = combined_target.repeat(self.num_members, 1, 1)
+            nll = (
+                mbrl.util.math.gaussian_nll(
+                    pred_mean, pred_logvar, combined_target, reduce=False
+                )
+                .mean((1, 2))  # average over batch and target dimension
+                .sum()
+            )  # sum over ensemble dimension
+            nll += 0.01 * (self.max_logvar.sum() - self.min_logvar.sum())
+            breakpoint()
+        else:
+            pred_mean, pred_logvar = self.forward(model_in, use_propagation=False)
+            if target.shape[0] != self.num_members:
+                target = target.repeat(self.num_members, 1, 1)
+            nll = (
+                mbrl.util.math.gaussian_nll(
+                    pred_mean, pred_logvar, target, reduce=False
+                )
+                .mean((1, 2))  # average over batch and target dimension
+                .sum()
+            )  # sum over ensemble dimension
+            nll += 0.01 * (self.max_logvar.sum() - self.min_logvar.sum())
         return nll
 
     def _value_loss(
@@ -315,10 +368,6 @@ class GaussianMLP(Ensemble):
             model_in = model_in.unsqueeze(0)
             target = target.unsqueeze(0)
         pred_mean, _ = self.forward(model_in, use_propagation=False)
-
-        # print(pred_mean.shape)
-        # print(target.shape)
-
         num_ensemble = pred_mean.shape[0]
         batch_size = pred_mean.shape[1]
         target_value = torch.empty((num_ensemble, batch_size, 1), device=self.device)
@@ -343,6 +392,8 @@ class GaussianMLP(Ensemble):
         target: Optional[torch.Tensor] = None,
         value=False,
         agent=None,
+        additional_model_in: Optional[torch.Tensor] = None,
+        additional_target: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Computes Gaussian NLL loss.
 
@@ -369,7 +420,12 @@ class GaussianMLP(Ensemble):
         if self.deterministic:
             return self._mse_loss(model_in, target), {}
         else:
-            return self._nll_loss(model_in, target), {}
+            return self._nll_loss(
+                model_in,
+                target,
+                additional_model_in=additional_model_in,
+                additional_target=additional_target,
+            ), {}
 
     def eval_score(  # type: ignore
         self,
@@ -400,6 +456,39 @@ class GaussianMLP(Ensemble):
             pred_mean, _ = self.forward(model_in, use_propagation=False)
             target = target.repeat((self.num_members, 1, 1))
             return F.mse_loss(pred_mean, target, reduction="none"), {}
+
+    def ensemble_gradient_penalty(self, learner_sa, expert_sa):
+        if len(learner_sa.shape) == 3:
+            num_models, batch_size, _ = learner_sa.shape
+        else:
+            num_models = 1
+            batch_size = expert_sa.size()[0]
+
+        alpha = torch.rand(num_models, batch_size, 1).to(self.device)
+        alpha = alpha.expand_as(expert_sa)
+
+        interpolated = alpha * expert_sa.data + (1 - alpha) * learner_sa.data
+        interpolated = Variable(interpolated, requires_grad=True).to(self.device)
+
+        f_interpolated_mean, f_interpolated_var = self.forward(
+            interpolated.float(), use_propagation=False
+        )
+        f_interpolated_mean = f_interpolated_mean.to(self.device)
+
+        gradients_mean = torch_grad(
+            outputs=f_interpolated_mean,
+            inputs=interpolated,
+            grad_outputs=torch.ones(f_interpolated_mean.size()).to(self.device),
+            create_graph=True,
+            retain_graph=True,
+        )[0].to(self.device)
+
+        gradients_mean = gradients_mean.view(num_models, batch_size, -1)
+        gradients_norm = torch.sqrt(torch.sum(gradients_mean**2, dim=2) + 1e-12)
+        # gradients = gradients.view(num_models, batch_size, -1)
+        # gradients_norm = torch.sqrt(torch.sum(gradients**2, dim=2) + 1e-12)
+
+        return ((gradients_norm - 0.4) ** 2).mean()
 
     def sample_propagation_indices(
         self, batch_size: int, _rng: torch.Generator

@@ -130,6 +130,8 @@ class Model(nn.Module, abc.ABC):
         model_in: ModelInput,
         optimizer: torch.optim.Optimizer,
         target: Optional[torch.Tensor] = None,
+        additional_model_in: Optional[ModelInput] = None,
+        additional_target: Optional[TransitionBatch] = None,
     ) -> Tuple[float, Dict[str, Any]]:
         """Updates the model using backpropagation with given input and target tensors.
 
@@ -154,7 +156,12 @@ class Model(nn.Module, abc.ABC):
         """
         self.train()
         optimizer.zero_grad()
-        loss, meta = self.loss(model_in, target)
+        loss, meta = self.loss(
+            model_in,
+            target,
+            additional_model_in=additional_model_in,
+            additional_target=additional_target,
+        )
         loss.backward()
         if meta is not None:
             with torch.no_grad():
@@ -195,7 +202,7 @@ class Model(nn.Module, abc.ABC):
         """
         self.train()
         optimizer.zero_grad()
-        loss, meta = self.loss(model_in, target, value=True,agent=agent)
+        loss, meta = self.loss(model_in, target, value=True, agent=agent)
         loss.backward()
         if meta is not None:
             with torch.no_grad():

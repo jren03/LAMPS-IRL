@@ -35,7 +35,8 @@ relabel_samples: true
 no_regret: false
 
 train_discriminator: true
-adversarial_disc_loss: false
+adversarial_reward_loss: false
+use_gp: false
 
 experiment: default
 seed: 1

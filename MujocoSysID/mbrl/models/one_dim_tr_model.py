@@ -187,6 +187,7 @@ class OneDTransitionRewardModel(Model):
         batch: mbrl.types.TransitionBatch,
         optimizer: torch.optim.Optimizer,
         target: Optional[torch.Tensor] = None,
+        additional_batch: Optional[mbrl.types.TransitionBatch] = None,
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Updates the model given a batch of transitions and an optimizer.
 
@@ -199,7 +200,18 @@ class OneDTransitionRewardModel(Model):
         """
         assert target is None
         model_in, target = self._process_batch(batch)
-        return self.model.update(model_in, optimizer, target=target)
+        additional_model_in, additional_target = None, None
+        if additional_batch is not None:
+            additional_model_in, additional_target = self._process_batch(
+                additional_batch
+            )
+        return self.model.update(
+            model_in,
+            optimizer,
+            target=target,
+            additional_model_in=additional_model_in,
+            additional_target=additional_target,
+        )
 
     def eval_score(
         self,
