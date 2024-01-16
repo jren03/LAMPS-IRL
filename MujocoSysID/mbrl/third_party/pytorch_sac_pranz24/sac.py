@@ -1,6 +1,7 @@
 import os
 
 import torch
+import numpy as np
 import torch.nn.functional as F
 from torch.optim import Adam
 
@@ -127,13 +128,13 @@ class SAC(object):
             exp_mask_batch,
         ) = exp_memory.sample(half_batch_size).astuple()
 
-        # concatenate the two batches
-        state_batch = torch.cat((state_batch, exp_state_batch), dim=0)
-        action_batch = torch.cat((action_batch, exp_action_batch), dim=0)
-        next_state_batch = torch.cat((next_state_batch, exp_next_state_batch), dim=0)
-        reward_batch = torch.cat((reward_batch, exp_reward_batch), dim=0)
-        mask_batch = torch.cat((mask_batch, exp_mask_batch), dim=0)
-        
+        # concatenate the two batches numpy
+        state_batch = np.concatenate((state_batch, exp_state_batch), axis=0)
+        action_batch = np.concatenate((action_batch, exp_action_batch), axis=0)
+        next_state_batch = np.concatenate((next_state_batch, exp_next_state_batch), axis=0)
+        reward_batch = np.concatenate((reward_batch, exp_reward_batch), axis=0)
+        mask_batch = np.concatenate((mask_batch, exp_mask_batch), axis=0)
+
         state_batch = torch.FloatTensor(state_batch).to(self.device)
         next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
         action_batch = torch.FloatTensor(action_batch).to(self.device)
