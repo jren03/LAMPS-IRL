@@ -51,7 +51,7 @@ class GoalWrapper(gym.Wrapper):
         super().__init__(env)
         self.env = env
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(31,))
-        print(f"{PC.OKBLUE}Goal Wrapping{_get_env_name(self.env)}{PC.ENDC}")
+        print(f"{PC.BOLD}Goal Wrapping{_get_env_name(self.env)}{PC.ENDC}")
 
     def reset(self):
         with HiddenPrints():
@@ -63,3 +63,18 @@ class GoalWrapper(gym.Wrapper):
         obs, rew, done, info = self.env.step(action)
         goal = self.env.target_goal
         return np.concatenate([obs, goal]), rew, done, info
+
+
+class MaskAntMazeObsWrapper(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self.env = env
+        print(f"{PC.BOLD}Masking AntMazeObs{_get_env_name(self.env)}{PC.ENDC}")
+    
+    def reset(self):
+        obs = self.env.reset()
+        return obs
+    
+    def step(self, action):
+        obs, rew, done, info = self.env.step(action)
+        return obs, rew, done, info

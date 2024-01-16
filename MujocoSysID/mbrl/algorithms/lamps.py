@@ -398,39 +398,58 @@ def train(
                 ) < cfg.overrides.sac_batch_size:
                     break  # only update every once in a while
 
-                if cfg.overrides.policy_exp_ratio > 1:
+                # since we pass in sac_buffer to both anyway, regular runs is just update_parameters
+                if cfg.bc_reg:
+                    agent.sac_agent.bc_reg_update_parameters(
+                        sac_buffer,
+                        expert_replay_buffer,
+                        cfg.overrides.sac_batch_size,
+                        updates_made,
+                        logger,
+                        reverse_mask=True,
+                    )
+                else:
                     agent.sac_agent.update_parameters(
-                        which_buffer,
+                        sac_buffer,
                         cfg.overrides.sac_batch_size,
                         updates_made,
                         logger,
                         reverse_mask=True,
                     )
 
-                else:
-                    # ! policy_exp_ratio == 0 for everything except pointmaze
-                    # ! should update actor and critic on rollouts in the learned model
-                    if rng.random() < cfg.overrides.policy_exp_ratio:
-                        agent.sac_agent.adv_update_parameters(
-                            which_buffer,
-                            expert_replay_buffer,
-                            cfg.overrides.sac_batch_size,
-                            updates_made,
-                            logger,
-                            reverse_mask=True,
-                        )
+                # if cfg.overrides.policy_exp_ratio > 1:
+                #     agent.sac_agent.update_parameters(
+                #         which_buffer,
+                #         cfg.overrides.sac_batch_size,
+                #         updates_made,
+                #         logger,
+                #         reverse_mask=True,
+                #     )
 
-                    else:
-                        agent.sac_agent.adv_update_parameters(
-                            which_buffer,
-                            policy_buffer
-                            if cfg.use_yuda_default or cfg.use_policy_buffer_adv_update
-                            else sac_buffer,
-                            cfg.overrides.sac_batch_size,
-                            updates_made,
-                            logger,
-                            reverse_mask=True,
-                        )
+                # else:
+                #     # ! policy_exp_ratio == 0 for everything except pointmaze
+                #     # ! should update actor and critic on rollouts in the learned model
+                #     if rng.random() < cfg.overrides.policy_exp_ratio:
+                #         agent.sac_agent.adv_update_parameters(
+                #             which_buffer,
+                #             expert_replay_buffer,
+                #             cfg.overrides.sac_batch_size,
+                #             updates_made,
+                #             logger,
+                #             reverse_mask=True,
+                #         )
+
+                #     else:
+                #         agent.sac_agent.adv_update_parameters(
+                #             which_buffer,
+                #             policy_buffer
+                #             if cfg.use_yuda_default or cfg.use_policy_buffer_adv_update
+                #             else sac_buffer,
+                #             cfg.overrides.sac_batch_size,
+                #             updates_made,
+                #             logger,
+                #             reverse_mask=True,
+                #         )
 
                 updates_made += 1
                 if not silent and updates_made % cfg.log_frequency_agent == 0:

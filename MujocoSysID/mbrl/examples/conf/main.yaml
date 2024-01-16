@@ -38,6 +38,8 @@ train_discriminator: true
 adversarial_reward_loss: false
 use_gp: false
 
+sac_bc_reg: false
+
 experiment: default
 seed: 1
 
