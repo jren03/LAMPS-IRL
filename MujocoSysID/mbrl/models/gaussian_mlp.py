@@ -313,7 +313,6 @@ class GaussianMLP(Ensemble):
             additional_target = additional_target.unsqueeze(0)
 
         if separate_buffers:
-            batch_size = model_in.shape[1]
             # concatenate the two
             combined_model_in = torch.cat((model_in, additional_model_in), dim=1)
             combined_target = torch.cat((target, additional_target), dim=1)
@@ -322,20 +321,20 @@ class GaussianMLP(Ensemble):
             )
             # model_in is learner, additional_model_in is expert
             # for adversarial loss, take the diff of the last dim
-            learner_reward_pred = pred_mean[:, :batch_size, -1:]
-            expert_reward_pred = pred_mean[:, batch_size:, -1:]
-            if self.use_gp:
-                gp = self.ensemble_gradient_penalty(
-                    learner_sa=model_in, expert_sa=additional_model_in
-                )
-            else:
-                gp = 0
-            # want high expert reward, low learner reward
-            adversarial_reward_loss = (
-                learner_reward_pred.mean() - expert_reward_pred.mean() + 10 * gp
+            # learner_reward_pred = pred_mean[:, :batch_size, -1:]
+            # expert_reward_pred = pred_mean[:, batch_size:, -1:]
+            # if self.use_gp:
+            gp = self.ensemble_gradient_penalty(
+                learner_sa=model_in, expert_sa=additional_model_in
             )
+            # else:
+            #     gp = 0
+            # want high expert reward, low learner reward
+            # adversarial_reward_loss = (
+            #     learner_reward_pred.mean() - expert_reward_pred.mean() + 10 * gp
+            # )
 
-            if target.shape[0] != self.num_members:
+            if combined_target.shape[0] != self.num_members:
                 combined_target = combined_target.repeat(self.num_members, 1, 1)
             nll = (
                 mbrl.util.math.gaussian_nll(
@@ -344,8 +343,7 @@ class GaussianMLP(Ensemble):
                 .mean((1, 2))  # average over batch and target dimension
                 .sum()
             )  # sum over ensemble dimension
-            nll += 0.01 * (self.max_logvar.sum() - self.min_logvar.sum())
-            breakpoint()
+            nll += 0.01 * (self.max_logvar.sum() - self.min_logvar.sum()) + 10 * gp
         else:
             pred_mean, pred_logvar = self.forward(model_in, use_propagation=False)
             if target.shape[0] != self.num_members:
@@ -470,10 +468,12 @@ class GaussianMLP(Ensemble):
         interpolated = alpha * expert_sa.data + (1 - alpha) * learner_sa.data
         interpolated = Variable(interpolated, requires_grad=True).to(self.device)
 
-        f_interpolated_mean, f_interpolated_var = self.forward(
+        f_interpolated_mean, _ = self.forward(
             interpolated.float(), use_propagation=False
         )
-        f_interpolated_mean = f_interpolated_mean.to(self.device)
+        f_interpolated_mean = f_interpolated_mean.to(self.device)[
+            :, :, -1:
+        ]  # only reward
 
         gradients_mean = torch_grad(
             outputs=f_interpolated_mean,

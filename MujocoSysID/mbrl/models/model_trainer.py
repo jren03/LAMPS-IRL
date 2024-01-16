@@ -159,6 +159,9 @@ class ModelTrainer:
                     except StopIteration:
                         additional_train_iter = iter(additional_train)
                         additional_batch = next(additional_train_iter)
+                    # continue if batch_size not equal
+                    if batch.rewards.shape[1] != additional_batch.rewards.shape[1]:
+                        continue
                 loss, meta = self.model.update(
                     batch, self.optimizer, additional_batch=additional_batch
                 )
