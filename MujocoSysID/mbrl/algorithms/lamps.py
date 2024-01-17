@@ -429,7 +429,8 @@ def train(
         # ------ Epoch ended (evaluate and save model) ------
         if (env_steps + 1) % cfg.overrides.epoch_length == 0:
             epoch += 1
-        if (env_steps + 1) % cfg.eval_frequency == 0:
+        # if (env_steps + 1) % cfg.eval_frequency == 0:
+        if True:
             avg_reward, success_rate = evaluate(
                 test_env,
                 agent,
@@ -445,7 +446,7 @@ def train(
                     "episode_reward": avg_reward,
                     "success_rate": success_rate,
                     "rollout_length": rollout_length,
-                    "sac_reset_ratio": sac_reset_ratio,
+                    "sac_reset_ratio": 0.0,
                 },
             )
 
