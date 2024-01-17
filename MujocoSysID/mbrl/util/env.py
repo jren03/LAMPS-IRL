@@ -100,8 +100,6 @@ def _legacy_make_env(
     env, reward_fn = _handle_learned_rewards_and_seed(cfg, env, reward_fn)
 
     env_name = cfg.overrides.env.lower()
-    if "maze" in env_name:
-        env = GoalWrapper(env)
 
     if cfg.shaky:
         if cfg.p_tremble != -1:

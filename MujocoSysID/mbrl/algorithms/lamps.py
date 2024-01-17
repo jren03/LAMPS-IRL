@@ -21,7 +21,7 @@ import mbrl.types
 import mbrl.util
 import mbrl.util.common
 import mbrl.util.math
-from mbrl.env.gym_wrappers import LearnerRewardWrapper, ResetWrapper
+from mbrl.env.gym_wrappers import LearnerRewardWrapper, ResetWrapper, GoalWrapper
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
 from mbrl.util.fetch_demos import fetch_demos
@@ -149,14 +149,6 @@ def train(
 
     warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-    obs_shape = env.observation_space.shape
-    act_shape = env.action_space.shape
-
-    mbrl.planning.complete_agent_cfg(env, cfg.algorithm.agent)
-    agent = SACAgent(
-        cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
-    )
-
     is_maze = "maze" in cfg.overrides.env
     # all expert data is labelled 1
     expert_dataset, qpos, qvel = fetch_demos(
@@ -165,6 +157,15 @@ def train(
         use_mbrl_demos=cfg.use_mbrl_demos,
     )
     env = ResetWrapper(env, qpos, qvel, alpha=1.0)
+    env = GoalWrapper(env)
+    test_env = GoalWrapper(test_env)
+    obs_shape = env.observation_space.shape
+    act_shape = env.action_space.shape
+
+    mbrl.planning.complete_agent_cfg(env, cfg.algorithm.agent)
+    agent = SACAgent(
+        cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
+    )
 
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
@@ -209,7 +210,6 @@ def train(
         reward_type=dtype,
     )
     random_explore = cfg.algorithm.random_initial_explore
-    breakpoint()
     mbrl.util.common.rollout_agent_trajectories(
         env,
         cfg.algorithm.initial_exploration_steps,
