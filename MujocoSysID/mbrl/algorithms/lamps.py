@@ -164,7 +164,7 @@ def train(
         zero_out_rewards=cfg.train_discriminator,
         use_mbrl_demos=cfg.use_mbrl_demos,
     )
-    env = ResetWrapper(env, qpos, qvel)
+    env = ResetWrapper(env, qpos, qvel, alpha=1.0)
 
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
@@ -209,6 +209,7 @@ def train(
         reward_type=dtype,
     )
     random_explore = cfg.algorithm.random_initial_explore
+    breakpoint()
     mbrl.util.common.rollout_agent_trajectories(
         env,
         cfg.algorithm.initial_exploration_steps,
