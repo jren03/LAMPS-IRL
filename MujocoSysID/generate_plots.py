@@ -54,12 +54,14 @@ def main(env_abbrv, env_name):
     csv_results_dir = Path("csv_results", env_name)
     algs_to_colors = {
         "exp": "green",
+        "bc": "#8064A2",
         "mbpo": "grey",
         "sysid": "#4bacc6",
         "lamps": "#F79646",
     }
     algs_to_labels = {
         "exp": "Demo",
+        "bc": "BC",
         "mbpo": "MBPO",
         "lamps": "LAMPS",
         "sysid": "SysID",
@@ -78,25 +80,39 @@ def main(env_abbrv, env_name):
         # "hum": 5708.24,
         # "walk": 5740.80,
     }
+    env_name_to_bc_scores = {
+        "div": np.mean([32, 20, 60, 32, 20, 20, 44, 28, 20, 24]),
+        "play": np.mean([36, 28, 20, 24, 32, 40, 40, 44, 52, 36])
+    }
     env_name_to_ptremble = {
         "ant": 0.01,
         "hc": 0.075,
         "hop": 0.01,
         "walk": 0.05,
         "hum": 0.025,
+        "div": 0.0,
+        "play": 0.0,
     }
 
     # steps = 150
     # steps = 100
     # sz = 1000
 
-    steps = 40
-    sz = 50_000
+    steps = 10
+    sz = 10_000
     for alg in algs_to_colors.keys():
-        if alg == "exp":
+        if alg == "exp" and env_abbrv in env_name_to_exp_scores.keys():
             plt.plot(
                 np.arange(steps) * sz,
                 np.ones(steps) * env_name_to_exp_scores[env_abbrv],
+                color=algs_to_colors[alg],
+                linestyle="--",
+                label=algs_to_labels[alg],
+            )
+        elif alg == "bc" and env_abbrv in env_name_to_bc_scores.keys():
+            plt.plot(
+                np.arange(steps) * sz,
+                np.ones(steps) * env_name_to_bc_scores[env_abbrv],
                 color=algs_to_colors[alg],
                 linestyle="--",
                 label=algs_to_labels[alg],
@@ -124,6 +140,9 @@ def main(env_abbrv, env_name):
                 calc_iqm(scores)["alg"],
                 np.std(scores, axis=0) / np.sqrt(len(scores)),
             )
+            if env_abbrv == "div" or env_abbrv == "play":
+                mean *= 100
+                std_err *= 100
             plt.plot(
                 np.arange(steps) * sz,
                 mean,
@@ -160,7 +179,7 @@ if __name__ == "__main__":
         "-e",
         "--env_name",
         type=str,
-        choices=["ant", "hc", "hop", "hum", "walk"],
+        choices=["ant", "hc", "hop", "hum", "walk", "div", "play"],
         help="Name of the environment",
     )
     args = parser.parse_args()
@@ -178,6 +197,10 @@ if __name__ == "__main__":
         env_name = "Humanoid-v3"
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
+    elif env_abbr == "div":
+        env_name = "antmaze-large-diverse-v2"
+    elif env_abbr == "play":
+        env_name = "antmaze-large-play-v2"
     if "truncated" not in env_name:
         env_name = f"gym___{env_name}"
     main(env_abbr, env_name)

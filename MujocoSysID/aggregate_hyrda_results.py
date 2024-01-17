@@ -13,7 +13,7 @@ def is_non_zero_file(fpath):
 
 def main(env_name, override, partition, date):
     algs = ["lamps", "sysid", "mbpo"]
-    target_entries = 40
+    target_entries = 20
 
     for alg in algs:
         base_dir = Path("exp", alg, partition, env_name)
@@ -62,9 +62,9 @@ def main(env_name, override, partition, date):
                     hydra_yml = yaml.safe_load(stream)
                     seed = hydra_yml.get("seed")
                     shaky = hydra_yml.get("shaky")
-                    freq = int(hydra_yml.get("disc").get("freq_train_disc"))
-                    if freq == 10_000:
-                        continue
+                    # freq = int(hydra_yml.get("disc").get("freq_train_disc"))
+                    # if freq == 10_000:
+                    #     continue
                 except yaml.YAMLError as exc:
                     print(exc)
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
         "-e",
         "--env_name",
         type=str,
-        choices=["ant", "hc", "hop", "hum", "walk"],
+        choices=["ant", "hc", "hop", "hum", "walk", "div", "play"],
         help="Name of the environment",
     )
     parser.add_argument("-o", "--override", action="store_true", default=False)
@@ -107,6 +107,10 @@ if __name__ == "__main__":
         env_name = "Humanoid-v3"
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
+    elif env_abbr == "div":
+        env_name = "antmaze-large-diverse-v2"
+    elif env_abbr == "play":
+        env_name = "antmaze-large-play-v2"
     if "truncated" not in env_name:
         env_name = f"gym___{env_name}"
     main(env_name, args.override, args.p, args.d)
