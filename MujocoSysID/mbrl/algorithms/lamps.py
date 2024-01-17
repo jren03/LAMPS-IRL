@@ -468,7 +468,8 @@ def train(
             # ------ Epoch ended (evaluate and save model) ------
             if (env_steps + 1) % cfg.overrides.epoch_length == 0:
                 epoch += 1
-            if (env_steps + 1) % cfg.eval_frequency == 0:
+            # if (env_steps + 1) % cfg.eval_frequency == 0:
+            if True:
                 if not is_maze:
                     # start_time = time.time()
                     avg_reward = evaluate(
