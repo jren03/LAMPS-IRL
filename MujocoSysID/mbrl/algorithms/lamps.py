@@ -44,6 +44,13 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("sac_reset_ratio", "SRR", "float"),
 ]
 
+MBPO_MAZE_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
+    ("epoch", "E", "int"),
+    ("rollout_length", "RL", "int"),
+    ("success_rate", "SR", "float"),
+    ("sac_reset_ratio", "SRR", "float"),
+]
+
 
 def rollout_model_and_populate_sac_buffer(
     model_env: mbrl.models.ModelEnv,
@@ -163,7 +170,7 @@ def train(
     logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)
     logger.register_group(
         mbrl.constants.RESULTS_LOG_NAME,
-        MBPO_LOG_FORMAT,
+        MBPO_LOG_FORMAT if not is_maze else MBPO_MAZE_LOG_FORMAT,
         color="green",
         dump_frequency=1,
     )
@@ -496,6 +503,7 @@ def train(
                             "episode_reward": avg_reward,
                             "success_rate": success_rate,
                             "rollout_length": rollout_length,
+                            "sac_reset_ratio": sac_reset_ratio,
                         },
                     )
                 # if avg_reward > best_eval_reward:
