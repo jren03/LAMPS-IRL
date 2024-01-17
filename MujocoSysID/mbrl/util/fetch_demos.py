@@ -82,6 +82,8 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
                 for exp_range in exp_ranges
             ]
         )
+        qpos = np.array([dataset['infos/qpos'][exp_range[0]:exp_range[1]] for exp_range in exp_ranges])
+        qvel = np.array([dataset['infos/qvel'][exp_range[0]:exp_range[1]] for exp_range in exp_ranges])
         goals_flattened = np.array([g for traj in goals for g in traj])
         obs = np.concatenate([obs, goals_flattened], axis=1)
         next_obs = np.concatenate([next_obs, goals_flattened], axis=1)

@@ -30,7 +30,7 @@ class TremblingHandWrapper(gym.Wrapper):
         )
 
     def reset(self, seed=0, options=None):
-        return self.env.reset(seed=seed, options=options)
+        return self.env.reset()
 
     def step(self, action):
         if np.random.uniform() < self.p_tremble:

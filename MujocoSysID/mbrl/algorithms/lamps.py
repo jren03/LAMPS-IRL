@@ -24,7 +24,7 @@ import mbrl.types
 import mbrl.util
 import mbrl.util.common
 import mbrl.util.math
-from mbrl.env.gym_wrappers import ResetWrapper
+from mbrl.env.gym_wrappers import ResetWrapper, GoalWrapper
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
 from mbrl.util.fetch_demos import fetch_demos
@@ -242,15 +242,18 @@ def train(
 
     warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-    obs_shape = env.observation_space.shape
-    act_shape = env.action_space.shape
-
     is_maze = "maze" in cfg.overrides.env
     expert_dataset, qpos, qvel = fetch_demos(
         cfg.overrides.env,
         zero_out_rewards=cfg.train_discriminator,
         use_mbrl_demos=cfg.use_mbrl_demos,
     )
+    env = ResetWrapper(env, qpos, qvel)
+    env = GoalWrapper(env)
+    test_env = GoalWrapper(test_env)
+
+    obs_shape = env.observation_space.shape
+    act_shape = env.action_space.shape
 
     mbrl.planning.complete_agent_cfg(env, cfg.algorithm.agent)
     agent = SACAgent(
