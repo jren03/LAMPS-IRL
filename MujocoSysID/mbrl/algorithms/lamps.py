@@ -247,9 +247,9 @@ def train(
     )
 
     mbrl.planning.complete_agent_cfg(env, cfg.algorithm.agent)
-    # agent = SACAgent(
-    #     cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
-    # )
+    agent = SACAgent(
+        cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
+    )
 
     if cfg.train_disc_in_model:
         # load in SB3 model used to collect data
