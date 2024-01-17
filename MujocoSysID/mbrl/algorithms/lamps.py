@@ -380,57 +380,56 @@ def train(
                 )
                 updates_made += 1
 
-                # ------ Discriminator Training ------
-                if (
-                    cfg.train_discriminator
-                    and not cfg.update_with_model
-                    and updates_made != 0
-                    and (updates_made) % cfg.disc.freq_train_disc == 0
-                ):
-                    if not disc_steps == 0:
-                        disc_lr = cfg.disc.start_lr / disc_steps
-                    else:
-                        disc_lr = cfg.disc.start_lr
-                    f_opt = OAdam(f_net.parameters(), lr=disc_lr)
-                    S_curr, A_curr, s = sample(
-                        test_env,
-                        agent,
-                        cfg.disc.num_traj_samples,
-                        drb,
-                        cfg.no_regret,
-                    )
-                    learner_sa_pairs = torch.cat(
-                        (torch.from_numpy(S_curr), torch.from_numpy(A_curr)), dim=1
+            # ------ Discriminator Training ------
+            if (
+                cfg.train_discriminator
+                and not cfg.update_with_model
+                and updates_made != 0
+                and (updates_made) % cfg.disc.freq_train_disc == 0
+            ):
+                if not disc_steps == 0:
+                    disc_lr = cfg.disc.start_lr / disc_steps
+                else:
+                    disc_lr = cfg.disc.start_lr
+                f_opt = OAdam(f_net.parameters(), lr=disc_lr)
+                S_curr, A_curr, s = sample(
+                    test_env,
+                    agent,
+                    cfg.disc.num_traj_samples,
+                    drb,
+                    cfg.no_regret,
+                )
+                learner_sa_pairs = torch.cat(
+                    (torch.from_numpy(S_curr), torch.from_numpy(A_curr)), dim=1
+                ).to(cfg.device)
+                for _ in range(cfg.disc.num_updates_per_step):
+                    learner_sa = learner_sa_pairs[
+                        np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
+                    ]
+                    expert_batch = expert_replay_buffer.sample(cfg.disc.batch_size)
+                    expert_s, expert_a, *_ = cast(
+                        mbrl.types.TransitionBatch, expert_batch
+                    ).astuple()
+                    expert_sa = torch.cat(
+                        (torch.from_numpy(expert_s), torch.from_numpy(expert_a)),
+                        dim=1,
                     ).to(cfg.device)
-                    for _ in range(cfg.disc.num_updates_per_step):
-                        learner_sa = learner_sa_pairs[
-                            np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
-                        ]
-                        expert_batch = expert_replay_buffer.sample(cfg.disc.batch_size)
-                        expert_s, expert_a, *_ = cast(
-                            mbrl.types.TransitionBatch, expert_batch
-                        ).astuple()
-                        expert_sa = torch.cat(
-                            (torch.from_numpy(expert_s), torch.from_numpy(expert_a)),
-                            dim=1,
-                        ).to(cfg.device)
-                        f_opt.zero_grad()
-                        f_learner = f_net(learner_sa.float())
-                        f_expert = f_net(expert_sa.float())
-                        gp = gradient_penalty(learner_sa, expert_sa, f_net)
-                        loss = f_expert.mean() - f_learner.mean() + 10 * gp
-                        loss.backward()
-                        f_opt.step()
-                    disc_steps += 1
+                    f_opt.zero_grad()
+                    f_learner = f_net(learner_sa.float())
+                    f_expert = f_net(expert_sa.float())
+                    gp = gradient_penalty(learner_sa, expert_sa, f_net)
+                    loss = f_expert.mean() - f_learner.mean() + 10 * gp
+                    loss.backward()
+                    f_opt.step()
+                disc_steps += 1
 
-                tbar.update(1)
-                env_steps += 1
+            tbar.update(1)
+            env_steps += 1
 
         # ------ Epoch ended (evaluate and save model) ------
         if (env_steps + 1) % cfg.overrides.epoch_length == 0:
             epoch += 1
-        # if (env_steps + 1) % cfg.eval_frequency == 0:
-        if True:
+        if (env_steps + 1) % cfg.eval_frequency == 0:
             avg_reward, success_rate = evaluate(
                 test_env,
                 agent,
