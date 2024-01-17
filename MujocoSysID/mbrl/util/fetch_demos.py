@@ -82,6 +82,8 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
                 for exp_range in exp_ranges
             ]
         )
+        qpos = np.array([dataset['infos/qpos'][exp_range[0]:exp_range[1]] for exp_range in exp_ranges])
+        qvel = np.array([dataset['infos/qvel'][exp_range[0]:exp_range[1]] for exp_range in exp_ranges])
         goals_flattened = np.array([g for traj in goals for g in traj])
         obs = np.concatenate([obs, goals_flattened], axis=1)
         next_obs = np.concatenate([next_obs, goals_flattened], axis=1)
@@ -166,9 +168,17 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
             dataset["next_observations"] = dataset["next_observations"][:, :obs_dim]
             print(f"New dataset shape: {dataset['observations'].shape}")
 
+        qpos = np.array(
+            [dataset["qpos"][exp_range[0] : exp_range[1]] for exp_range in exp_ranges],
+            dtype=object,
+        )
+        qvel = np.array(
+            [dataset["qvel"][exp_range[0] : exp_range[1]] for exp_range in exp_ranges],
+            dtype=object,
+        )
+
     if zero_out_rewards:
-        # dataset["rewards"] = np.zeros_like(dataset["rewards"])
-        dataset["rewards"] = np.ones_like(dataset["rewards"])
+        dataset["rewards"] = np.zeros_like(dataset["rewards"])
 
     print("-" * 80)
     print(f"{dataset_path=}")
@@ -178,4 +188,4 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
     )
     print("-" * 80)
 
-    return dataset
+    return dataset, qpos, qvel

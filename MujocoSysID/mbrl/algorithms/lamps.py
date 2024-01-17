@@ -21,7 +21,7 @@ import mbrl.types
 import mbrl.util
 import mbrl.util.common
 import mbrl.util.math
-from mbrl.env.gym_wrappers import LearnerRewardWrapper
+from mbrl.env.gym_wrappers import LearnerRewardWrapper, ResetWrapper
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
 from mbrl.util.fetch_demos import fetch_demos
@@ -159,11 +159,12 @@ def train(
 
     is_maze = "maze" in cfg.overrides.env
     # all expert data is labelled 1
-    expert_dataset = fetch_demos(
+    expert_dataset, qpos, qvel = fetch_demos(
         cfg.overrides.env,
         zero_out_rewards=cfg.train_discriminator,
         use_mbrl_demos=cfg.use_mbrl_demos,
     )
+    env = ResetWrapper(env, qpos, qvel)
 
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
