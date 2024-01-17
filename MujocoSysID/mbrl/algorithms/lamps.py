@@ -51,6 +51,12 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
 ]
 
 
+MBPO_MAZE_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
+    ("epoch", "E", "int"),
+    ("rollout_length", "RL", "int"),
+    ("success_rate", "SR", "float"),
+    ("sac_reset_ratio", "SRR", "float"),
+]
 def rollout_model_and_populate_sac_buffer(
     model_env: mbrl.models.ModelEnv,
     replay_buffer: mbrl.util.ReplayBuffer,
@@ -251,28 +257,12 @@ def train(
         cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
     )
 
-    if cfg.train_disc_in_model:
-        # load in SB3 model used to collect data
-        expert_base_path = Path(
-            "/share/portal/jlr429/pessimistic-irl/fast_irl/experts/"
-        )
-        env_name = cfg.overrides.env.lower()
-        if "humanoid" in env_name:
-            env_name = "Humanoid-v3"
-        elif "ant" in env_name and "truncated" in env_name:
-            env_name = "Ant-v3"
-        else:
-            env_name = env_name.replace("gym___", "")
-        expert_path = Path(expert_base_path, f"{env_name}/expert")
-        expert_sb3_agent = sb3.SAC.load(str(expert_path))
-        print(f"{PrintColors.BOLD}Loading expert agent from {expert_path}")
-
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
     logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)
     logger.register_group(
         mbrl.constants.RESULTS_LOG_NAME,
-        MBPO_LOG_FORMAT,
+        MBPO_MAZE_LOG_FORMAT,
         color="green",
         dump_frequency=1,
     )
@@ -285,37 +275,8 @@ def train(
         torch_generator.manual_seed(cfg.seed)
 
     # -------------- Create initial overrides. dataset --------------
-    dynamics_model = mbrl.util.common.create_one_dim_tr_model(cfg, obs_shape, act_shape)
     use_double_dtype = cfg.algorithm.get("normalize_double_precision", False)
     dtype = np.double if use_double_dtype else np.float32
-    replay_buffer = mbrl.util.common.create_replay_buffer(
-        cfg,
-        obs_shape,
-        act_shape,
-        rng=rng,
-        obs_type=dtype,
-        action_type=dtype,
-        reward_type=dtype,
-    )
-    policy_buffer = mbrl.util.common.create_replay_buffer(
-        cfg,
-        obs_shape,
-        act_shape,
-        rng=rng,
-        obs_type=dtype,
-        action_type=dtype,
-        reward_type=dtype,
-        fixed_reward_value=0.0 if cfg.disc_binary_reward else None,
-    )
-    # random_explore = cfg.algorithm.random_initial_explore
-    # mbrl.util.common.rollout_agent_trajectories(
-    #     env,
-    #     cfg.algorithm.initial_exploration_steps,
-    #     mbrl.planning.RandomAgent(env) if random_explore else agent,
-    #     {} if random_explore else {"sample": True, "batched": False},
-    #     replay_buffer=replay_buffer,
-    #     additional_buffer=policy_buffer,
-    # )
 
     # ------------ Fill expert buffer ---------------------
     expert_replay_buffer = mbrl.util.common.create_replay_buffer(
@@ -328,60 +289,18 @@ def train(
         reward_type=dtype,
         fixed_reward_value=1.0 if cfg.disc_binary_reward else None,
     )
-    if cfg.add_exp_to_replay_buffer:
-        replay_buffer.add_batch(
-            expert_dataset["observations"][:1000],
-            expert_dataset["actions"][:1000],
-            expert_dataset["next_observations"][:1000],
-            expert_dataset["rewards"][:1000],
-            expert_dataset["terminals"][:1000],
-        )
-    if cfg.from_end:
-        print(
-            f"{PrintColors.OKBLUE}Adding {cfg.overrides.expert_size} from end of expert dataset"
-        )
-        expert_replay_buffer.add_batch(
-            expert_dataset["observations"][-cfg.overrides.expert_size :],
-            expert_dataset["actions"][-cfg.overrides.expert_size :],
-            expert_dataset["next_observations"][-cfg.overrides.expert_size :],
-            expert_dataset["rewards"][-cfg.overrides.expert_size :],
-            expert_dataset["terminals"][-cfg.overrides.expert_size :],
-        )
-    else:
-        print(
-            f"{PrintColors.OKBLUE}Adding {cfg.overrides.expert_size} from beginning of expert dataset"
-        )
-        expert_replay_buffer.add_batch(
-            expert_dataset["observations"][: cfg.overrides.expert_size],
-            expert_dataset["actions"][: cfg.overrides.expert_size],
-            expert_dataset["next_observations"][: cfg.overrides.expert_size],
-            expert_dataset["rewards"][: cfg.overrides.expert_size],
-            expert_dataset["terminals"][: cfg.overrides.expert_size],
-        )
-
+    expert_replay_buffer.add_batch(
+        expert_dataset["observations"][-cfg.overrides.expert_size :],
+        expert_dataset["actions"][-cfg.overrides.expert_size :],
+        expert_dataset["next_observations"][-cfg.overrides.expert_size :],
+        expert_dataset["rewards"][-cfg.overrides.expert_size :],
+        expert_dataset["terminals"][-cfg.overrides.expert_size :],
+    )
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
 
-    # --------------- SAC reset ratio schedule -----------------
-    sac_reset_ratio = cfg.sac_schedule.start_ratio
-    sac_reset_schedule = np.array(
-        [
-            [sac_reset_ratio, cfg.sac_schedule.mid_ratio, cfg.sac_schedule.m1],
-            [
-                cfg.sac_schedule.mid_ratio,
-                cfg.sac_schedule.end_ratio,
-                cfg.sac_schedule.m2,
-            ],
-        ]
-    )
-    sac_ratio_lag = 0
-    if cfg.schedule_sac_ratio:
-        print(f"{PrintColors.OKBLUE}Scheduling SAC reset ratio:")
-        pp.pprint(sac_reset_schedule)
-        print(PrintColors.ENDC)
     # -------------- discriminator lr schedule ------------------
     disc_lr = cfg.disc.start_lr
-
     if cfg.no_regret:
         print(f"{PrintColors.OKBLUE}No regret discriminator training")
         print(PrintColors.ENDC)
@@ -409,53 +328,11 @@ def train(
         else:
             f_net = Discriminator(env).to(cfg.device)
         f_opt = OAdam(f_net.parameters(), lr=disc_lr)
-        model_env = mbrl.models.ModelEnv(
-            env, dynamics_model, termination_fn, f_net, generator=torch_generator
-        )
         # agent.sac_agent.add_f_net(f_net)
     else:
         print(
             f"{PrintColors.OKBLUE}Training with ground truth rewards{PrintColors.ENDC}"
         )
-        model_env = mbrl.models.ModelEnv(
-            env, dynamics_model, termination_fn, None, generator=torch_generator
-        )
-    model_trainer = mbrl.models.ModelTrainer(
-        dynamics_model,
-        optim_lr=cfg.overrides.model_lr,
-        weight_decay=cfg.overrides.model_wd,
-        logger=None if silent else logger,
-    )
-
-    if not cfg.hyirl:
-        env = ResetWrapper(env, qpos=qpos, qvel=qvel)
-    agent = SACRelabelRewards(
-        f_net,
-        "MlpPolicy",
-        env,
-        verbose=0,
-        policy_kwargs=dict(net_arch=[256, 256]),
-        ent_coef="auto",
-        learning_rate=linear_schedule(7.3e-4),
-        train_freq=64,
-        gradient_steps=64,
-        gamma=0.98,
-        tau=0.02,
-        device=cfg.device,
-    )
-    agent.actor.optimizer = OAdam(agent.actor.parameters())
-    agent.critic.optimizer = OAdam(agent.critic.parameters())
-    agent.replay_buffer = HybridReplayBuffer(
-        agent.buffer_size,
-        agent.observation_space,
-        agent.action_space,
-        agent.device,
-        1,
-        agent.optimize_memory_usage,
-        expert_data=expert_dataset,
-        balanced_sampling=cfg.hyirl,
-        fixed_hybrid_schedule=False,
-    )
 
     best_eval_reward = -np.inf
     epoch = 0
@@ -464,84 +341,109 @@ def train(
 
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
-        agent.learn(total_timesteps=10_000)
-        tbar.update(10_000)
-        env_steps += 10_000
-
-        # ------ Discriminator Training ------
-        if (
-            cfg.train_discriminator
-            and not cfg.update_with_model
-            and updates_made != 0
-            and (updates_made) % cfg.disc.freq_train_disc == 0
-        ):
-            if not disc_steps == 0:
-                disc_lr = cfg.disc.start_lr / disc_steps
-            else:
-                disc_lr = cfg.disc.start_lr
-            f_opt = OAdam(f_net.parameters(), lr=disc_lr)
-            S_curr, A_curr, s = sample(
-                test_env,
-                agent,
-                cfg.disc.num_traj_samples,
-                drb,
-                cfg.no_regret,
+        rollout_length = int(
+            mbrl.util.math.truncated_linear(
+                *(cfg.overrides.rollout_schedule + [epoch + 1])
             )
-            learner_sa_pairs = torch.cat(
-                (torch.from_numpy(S_curr), torch.from_numpy(A_curr)), dim=1
-            ).to(cfg.device)
-            for _ in range(cfg.disc.num_updates_per_step):
-                learner_sa = learner_sa_pairs[
-                    np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
-                ]
-                expert_batch = expert_replay_buffer.sample(cfg.disc.batch_size)
-                expert_s, expert_a, *_ = cast(
-                    mbrl.types.TransitionBatch, expert_batch
-                ).astuple()
-                expert_sa = torch.cat(
-                    (torch.from_numpy(expert_s), torch.from_numpy(expert_a)),
-                    dim=1,
-                ).to(cfg.device)
-                f_opt.zero_grad()
-                f_learner = f_net(learner_sa.float())
-                f_expert = f_net(expert_sa.float())
-                gp = gradient_penalty(learner_sa, expert_sa, f_net)
-                loss = f_expert.mean() - f_learner.mean() + 10 * gp
-                loss.backward()
-                f_opt.step()
-            disc_steps += 1
+        )
+        sac_buffer_capacity = rollout_length * rollout_batch_size * trains_per_epoch
+        sac_buffer_capacity *= cfg.overrides.num_epochs_to_retain_sac_buffer
+        sac_buffer = maybe_replace_sac_buffer(
+            sac_buffer, obs_shape, act_shape, sac_buffer_capacity, cfg.seed
+        )
+        obs, done = None, False
+
+        for steps_epoch in range(cfg.overrides.epoch_length):
+            if steps_epoch == 0 or done:
+                obs, done = env.reset(), False
+
+            _, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
+                env, obs, agent, {}, sac_buffer
+            )
+
+            for _ in range(cfg.overrides.num_sac_updates_per_step):
+                if (env_steps + 1) % cfg.overrides.sac_updates_every_steps != 0 or len(
+                    sac_buffer
+                ) < cfg.overrides.sac_batch_size:
+                    break  # only update every once in a while
+
+                agent.sac_agent.bc_reg_update_parameters(
+                    sac_buffer,
+                    expert_replay_buffer,
+                    cfg.overrides.sac_batch_size,
+                    updates_made,
+                    logger,
+                    reverse_mask=True,
+                )
+                updates_made += 1
+
+                # ------ Discriminator Training ------
+                if (
+                    cfg.train_discriminator
+                    and not cfg.update_with_model
+                    and updates_made != 0
+                    and (updates_made) % cfg.disc.freq_train_disc == 0
+                ):
+                    if not disc_steps == 0:
+                        disc_lr = cfg.disc.start_lr / disc_steps
+                    else:
+                        disc_lr = cfg.disc.start_lr
+                    f_opt = OAdam(f_net.parameters(), lr=disc_lr)
+                    S_curr, A_curr, s = sample(
+                        test_env,
+                        agent,
+                        cfg.disc.num_traj_samples,
+                        drb,
+                        cfg.no_regret,
+                    )
+                    learner_sa_pairs = torch.cat(
+                        (torch.from_numpy(S_curr), torch.from_numpy(A_curr)), dim=1
+                    ).to(cfg.device)
+                    for _ in range(cfg.disc.num_updates_per_step):
+                        learner_sa = learner_sa_pairs[
+                            np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
+                        ]
+                        expert_batch = expert_replay_buffer.sample(cfg.disc.batch_size)
+                        expert_s, expert_a, *_ = cast(
+                            mbrl.types.TransitionBatch, expert_batch
+                        ).astuple()
+                        expert_sa = torch.cat(
+                            (torch.from_numpy(expert_s), torch.from_numpy(expert_a)),
+                            dim=1,
+                        ).to(cfg.device)
+                        f_opt.zero_grad()
+                        f_learner = f_net(learner_sa.float())
+                        f_expert = f_net(expert_sa.float())
+                        gp = gradient_penalty(learner_sa, expert_sa, f_net)
+                        loss = f_expert.mean() - f_learner.mean() + 10 * gp
+                        loss.backward()
+                        f_opt.step()
+                    disc_steps += 1
+
+                tbar.update(1)
+                env_steps += 1
 
         # ------ Epoch ended (evaluate and save model) ------
         if (env_steps + 1) % cfg.overrides.epoch_length == 0:
             epoch += 1
         if (env_steps + 1) % cfg.eval_frequency == 0:
-            if not is_maze:
-                # start_time = time.time()
-                mean_reward, std_reward = evaluate_policy(
-                    agent, test_env, n_eval_episodes=2
-                )
-                logger.log_data(
-                    mbrl.constants.RESULTS_LOG_NAME,
-                    {
-                        "epoch": epoch,
-                        "env_step": env_steps,
-                        "episode_reward": mean_reward,
-                        "sac_reset_ratio": sac_reset_ratio,
-                    },
-                )
-                # print(f"Time for evaluation: {time.time() - start_time}")
-            else:
-                mean_reward, std_reward = evaluate_policy(
-                    agent, test_env, n_eval_episodes=25
-                )
-                logger.log_data(
-                    mbrl.constants.RESULTS_LOG_NAME,
-                    {
-                        "epoch": epoch,
-                        "env_step": env_steps,
-                        "episode_reward": mean_reward,
-                        "success_rate": 1,
-                    },
-                )
+            avg_reward, success_rate = evaluate(
+                test_env,
+                agent,
+                cfg.algorithm.num_eval_episodes,
+                video_recorder,
+                is_maze,
+            )
+            logger.log_data(
+                mbrl.constants.RESULTS_LOG_NAME,
+                {
+                    "epoch": epoch,
+                    "env_step": env_steps,
+                    "episode_reward": avg_reward,
+                    "success_rate": success_rate,
+                    "rollout_length": rollout_length,
+                    "sac_reset_ratio": sac_reset_ratio,
+                },
+            )
 
     return np.float32(best_eval_reward)

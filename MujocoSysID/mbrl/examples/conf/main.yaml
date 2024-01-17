@@ -31,7 +31,6 @@ sac_schedule:
   m2: 100_000
 
 eval_frequency: 10000
-
 sac_in_real: false
 
 silent: true
@@ -54,7 +53,7 @@ disc:
   m1: 30_000
   m2: 100_000
   batch_size: 4096
-  freq_train_disc: 5000
+  freq_train_disc: 10000
   num_updates_per_step: 4
   num_traj_samples: 4
 
