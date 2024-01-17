@@ -38,6 +38,7 @@ silent: true
 from_end: false
 shaky: true
 p_tremble: -1
+hyirl: false
 
 relabel_samples: true
 no_regret: false

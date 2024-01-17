@@ -41,7 +41,7 @@ def _handle_learned_rewards_and_seed(
         reward_fn = None
 
     if cfg.seed is not None:
-        env.seed(cfg.seed)
+        # env.seed(cfg.seed)
         env.observation_space.seed(cfg.seed + 1)
         env.action_space.seed(cfg.seed + 2)
 

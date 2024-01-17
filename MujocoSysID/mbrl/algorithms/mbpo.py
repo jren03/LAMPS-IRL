@@ -5,7 +5,7 @@
 import os
 from typing import Optional, Sequence, cast
 
-import gymnasium as gym
+import gym
 import hydra.utils
 import numpy as np
 import omegaconf

@@ -29,8 +29,8 @@ class TremblingHandWrapper(gym.Wrapper):
             f"{PrintColors.BOLD}{_get_env_name(self.env)} {p_tremble=}{PrintColors.ENDC}"
         )
 
-    def reset(self):
-        return self.env.reset()
+    def reset(self, seed=0, options=None):
+        return self.env.reset(seed=seed, options=options)
 
     def step(self, action):
         if np.random.uniform() < self.p_tremble:
@@ -49,7 +49,7 @@ class ResetWrapper(gym.Wrapper):
         self.max_t = 1000
         print(PrintColors.BOLD + f"RegularReset: {self.alpha=}" + PrintColors.ENDC)
 
-    def reset(self):
+    def reset(self, seed=0, options=None):
         self.env.reset()
         if np.random.uniform() < self.alpha:
             idx = np.random.choice(len(self.qpos))
@@ -80,7 +80,7 @@ class GoalWrapper(gym.Wrapper):
             f"{PrintColors.OKBLUE}Goal Wrapping{_get_env_name(self.env)}{PrintColors.ENDC}"
         )
 
-    def reset(self):
+    def reset(self, seed=0, options=None):
         with HiddenPrints():
             obs = self.env.reset()
             goal = self.env.target_goal
