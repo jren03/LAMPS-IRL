@@ -80,7 +80,6 @@ class GaussianMLP(Ensemble):
         propagation_method: Optional[str] = None,
         learn_logvar_bounds: bool = False,
         adversarial_reward_loss: bool = False,
-        use_gp: bool = False,
         scale_adv_loss: bool = False,
         activation_fn_cfg: Optional[Union[Dict, omegaconf.DictConfig]] = None,
     ):
@@ -91,7 +90,6 @@ class GaussianMLP(Ensemble):
         self.in_size = in_size
         self.out_size = out_size
         self.adversarial_reward_loss = adversarial_reward_loss
-        self.use_gp = use_gp
         self.scale_adv_loss = scale_adv_loss
 
         def create_activation():

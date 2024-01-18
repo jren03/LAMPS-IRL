@@ -10,7 +10,6 @@ deterministic: false
 propagation_method: random_model
 learn_logvar_bounds: false  # so far this works better
 adversarial_reward_loss: ${adversarial_reward_loss}
-use_gp: ${use_gp}
 scale_adv_loss: ${scale_adv_loss}
 activation_fn_cfg:
   _target_: torch.nn.SiLU
