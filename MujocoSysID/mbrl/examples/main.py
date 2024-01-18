@@ -30,7 +30,8 @@ def run(cfg: omegaconf.DictConfig):
         "use_mbrl_demos": cfg.use_mbrl_demos,
         "sac_schedule_lr": cfg.sac_schedule_lr,
         "adversarial_reward_loss": cfg.adversarial_reward_loss,
-        "sac_bc_reg": cfg.sac_bc_reg
+        "sac_bc_reg": cfg.sac_bc_reg,
+        "ema": cfg.ema,
     }
     for k, v in cfgs.items():
         if v != 0.0 and v is not False:

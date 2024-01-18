@@ -5,7 +5,7 @@
 import copy
 import functools
 import itertools
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Any
 
 import numpy as np
 import torch
@@ -79,6 +79,7 @@ class ModelTrainer:
         evaluate: bool = True,
         silent: bool = False,
         additional_train: TransitionIterator = None,
+        ema: Optional[Any] = None,
     ) -> Tuple[List[float], List[float]]:
         """Trains the model for some number of epochs.
 
@@ -165,6 +166,8 @@ class ModelTrainer:
                 loss, meta = self.model.update(
                     batch, self.optimizer, additional_batch=additional_batch
                 )
+                if ema:
+                    ema.update()
                 batch_losses.append(loss)
                 if batch_callback_epoch:
                     batch_callback_epoch(loss, meta, "train")

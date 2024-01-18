@@ -32,6 +32,7 @@ from mbrl.util.discriminator_replay_buffer import DiscriminatorReplayBuffer
 
 import d4rl
 from tqdm import tqdm
+from ema_pytorch import EMA
 
 import stable_baselines3 as sb3
 from pathlib import Path
@@ -282,6 +283,9 @@ def train(
     updates_made = 0
     env_steps = 0
     dynamics_model = mbrl.util.common.create_one_dim_tr_model(cfg, obs_shape, act_shape)
+    if cfg.emc:
+        print(f"{PrintColors.OKBLUE}Using EMA with decay {cfg.ema_decay}")
+        ema = EMA(dynamics_model)
     model_env = mbrl.models.ModelEnv(
         env, dynamics_model, termination_fn, None, generator=torch_generator
     )
@@ -351,6 +355,7 @@ def train(
                     additional_buffer=expert_replay_buffer
                     if cfg.adversarial_reward_loss
                     else None,
+                    ema=ema if cfg.emc else None,
                 )
                 # print(
                 #     f"Time for model training: {time.time() - start_time}, {len(replay_buffer)=}"
