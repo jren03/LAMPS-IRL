@@ -10,7 +10,7 @@ import pdb
 EPS = 1e-6
 
 
-def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
+def fetch_demos(env_name, zero_out_rewards=True):
     env_name = env_name.replace("gym___", "")
     if "truncated" in env_name.lower():
         env_name = f"{env_name.split('_')[0].capitalize()}-v3"
@@ -100,20 +100,7 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
             project_root = Path("/home/guest/dev/juntao/")
         else:
             project_root = Path("/share/portal/jlr429/pessimistic-irl/")
-        if use_mbrl_demos:
-            if is_truncated and "humanoid" in env_name.lower():
-                data_env_name = "humanoid_truncated_obs"
-            elif is_truncated and "ant" in env_name.lower():
-                data_env_name = "ant_truncated_obs"
-            else:
-                data_env_name = env_name
-            dataset_path = Path(
-                project_root, "expert_data", f"{data_env_name}_100000_mbrl.h5"
-            )
-        else:
-            dataset_path = Path(
-                project_root, "expert_data", f"{env_name}_100000_sb3.h5"
-            )
+        dataset_path = Path(project_root, "expert_data", f"{env_name}_100000_sb3.h5")
         dataset = h5py.File(dataset_path, "r")
         dataset = {
             key: np.array(dataset[key])[: num_demos * T] for key in dataset.keys()

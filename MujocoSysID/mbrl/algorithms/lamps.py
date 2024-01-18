@@ -158,7 +158,6 @@ def train(
     expert_dataset, qpos, qvel = fetch_demos(
         cfg.overrides.env,
         zero_out_rewards=cfg.train_discriminator,
-        use_mbrl_demos=cfg.use_mbrl_demos,
     )
 
     mbrl.planning.complete_agent_cfg(env, cfg.algorithm.agent)
@@ -234,8 +233,9 @@ def train(
         expert_dataset["terminals"][-cfg.overrides.expert_size :],
     )
 
-    disc_lr = cfg.disc.start_lr
-    if cfg.train_discriminator:
+    disc_lr = cfg.disc.lr
+    f_net = None
+    if cfg.train_discriminator and not cfg.train_disc_in_model:
         if cfg.disc_ensemble:
             print(
                 f"{PrintColors.OKBLUE}Training with discriminator function ENSEMBLE{PrintColors.ENDC}"
@@ -278,7 +278,7 @@ def train(
 
     if not cfg.hyirl:
         env = ResetWrapper(env, qpos=qpos, qvel=qvel)
-    env = RewardWrapper(env, f_net)
+    # env = RewardWrapper(env, f_net)
     env = TremblingHandWrapper(env, p_tremble=p_tremble)
     test_env = TremblingHandWrapper(test_env, p_tremble=p_tremble)
     agent = SACRelabelRewards(
