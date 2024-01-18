@@ -45,7 +45,9 @@ class DiscriminatorEnsemble(nn.Module):
             return torch.max(outputs, dim=0)[0]
         elif self.reduction == "log":
             red = torch.clamp(
-                -torch.log(1 - torch.mean(outputs, dim=0) + 1e-8), min=-4, max=15
+                -torch.log(1 - torch.clamp(torch.mean(outputs, dim=0), max=0.999)),
+                min=-4,
+                max=15,
             )
             if torch.isnan(red).any():
                 breakpoint()
