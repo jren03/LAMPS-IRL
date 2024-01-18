@@ -48,6 +48,8 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("epoch", "E", "int"),
     ("rollout_length", "RL", "int"),
     ("sac_reset_ratio", "SRR", "float"),
+    ("sac_buffer_stored", "SBS", "int"),
+    ("sac_buffer_capacity", "SBC", "int"),
 ]
 
 
@@ -70,7 +72,6 @@ def rollout_model_and_populate_sac_buffer(
     model_env: mbrl.models.ModelEnv,
     replay_buffer: mbrl.util.ReplayBuffer,
     agent: SACRelabelRewards,
-    sac_samples_action: bool,
     rollout_horizon: int,
     batch_size: int,
 ):
@@ -198,17 +199,6 @@ def train(
         action_type=dtype,
         reward_type=dtype,
     )
-    random_explore = cfg.algorithm.random_initial_explore
-    mbrl.util.common.rollout_agent_trajectories(
-        env,
-        cfg.algorithm.initial_exploration_steps,
-        mbrl.planning.RandomAgent(env),
-        {} if random_explore else {"sample": True, "batched": False},
-        replay_buffer=model_buffer,
-        additional_buffer=learner_buffer,
-    )
-
-    # ------------ Fill expert buffer ---------------------
     expert_replay_buffer = mbrl.util.common.create_replay_buffer(
         cfg,
         obs_shape,
@@ -226,11 +216,11 @@ def train(
         expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
     )
     expert_replay_buffer.add_batch(
-        expert_dataset["observations"][-cfg.overrides.expert_size :],
-        expert_dataset["actions"][-cfg.overrides.expert_size :],
-        expert_dataset["next_observations"][-cfg.overrides.expert_size :],
-        expert_dataset["rewards"][-cfg.overrides.expert_size :],
-        expert_dataset["terminals"][-cfg.overrides.expert_size :],
+        expert_dataset["observations"][: cfg.overrides.expert_size],
+        expert_dataset["actions"][: cfg.overrides.expert_size],
+        expert_dataset["next_observations"][: cfg.overrides.expert_size],
+        expert_dataset["rewards"][: cfg.overrides.expert_size],
+        expert_dataset["terminals"][: cfg.overrides.expert_size],
     )
 
     disc_lr = cfg.disc.lr
@@ -276,8 +266,8 @@ def train(
         cfg.overrides.rollout_schedule[-1] * rollout_batch_size * trains_per_epoch
     )
 
-    if not cfg.hyirl:
-        env = ResetWrapper(env, qpos=qpos, qvel=qvel)
+    # if not cfg.hyirl:
+    #     env = ResetWrapper(env, qpos=qpos, qvel=qvel)
     # env = RewardWrapper(env, f_net)
     env = TremblingHandWrapper(env, p_tremble=p_tremble)
     test_env = TremblingHandWrapper(test_env, p_tremble=p_tremble)
@@ -309,6 +299,22 @@ def train(
         balanced_sampling=cfg.hyirl,
         fixed_hybrid_schedule=False,
     )
+
+    # --------------- Preload Buffer ------------------
+    steps_collected = 0
+    while True:
+        obs = env.reset()
+        done = False
+        while not done:
+            action = agent.predict(obs, deterministic=False)[0]
+            next_obs, reward, done, _ = env.step(action)
+            model_buffer.add(obs, action, next_obs, reward, done)
+            learner_buffer.add(obs, action, next_obs, reward, done)
+            obs = next_obs
+            steps_collected += 1
+        if steps_collected >= cfg.algorithm.initial_exploration_steps:
+            break
+
     epoch = 0
     disc_steps = 0
     env_steps = 0
@@ -326,6 +332,7 @@ def train(
         obs, done = None, False
 
         # expand out the learn() from sb3 to allow for rollouts in the model
+        total_timestemps, _ = agent._setup_learn(10_000, test_env)
         for steps_epoch in range(cfg.overrides.epoch_length):
             if steps_epoch == 0 or done:
                 obs = env.reset()
@@ -360,20 +367,24 @@ def train(
                     model_env,
                     expert_replay_buffer if reset_sac else learner_buffer,
                     agent,
-                    cfg.algorithm.sac_samples_action,
                     rollout_length,
                     rollout_batch_size,
                 )
 
             # -------------------- SAC Training --------------------
-            if (
-                agent.replay_buffer.size() > agent.batch_size
-                and (env_steps) % agent.train_freq == 0
-            ):
-                # train agent using hybrid replay buffer
+            if agent.replay_buffer.size() > agent.batch_size:
                 agent.train(
-                    gradient_steps=agent.gradient_steps, batch_size=agent.batch_size
+                    gradient_steps=cfg.overrides.num_sac_updates_per_step,
+                    batch_size=cfg.overrides.sac_batch_size,
                 )
+            # if (
+            #     agent.replay_buffer.size() > agent.batch_size
+            #     and (env_steps) % agent.train_freq == 0
+            # ):
+            #     # train agent using hybrid replay buffer
+            #     agent.train(
+            #         gradient_steps=agent.gradient_steps, batch_size=agent.batch_size
+            #     )
         epoch += 1
 
         # ------ Discriminator Training ------
@@ -428,6 +439,8 @@ def train(
                     "env_step": env_steps,
                     "episode_reward": mean_reward,
                     "sac_reset_ratio": agent.replay_buffer.ratio,
+                    "sac_buffer_stored": agent.replay_buffer.num_stored,
+                    "sac_buffer_capacity": agent.replay_buffer.size(),
                 },
             )
 

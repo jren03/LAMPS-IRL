@@ -160,6 +160,7 @@ class HybridReplayBuffer(ReplayBuffer):
         buffer_end = self.pos + len(obs)
         if buffer_end > self.buffer_capacity:
             copy_from_to(self.pos, _batch_start, self.buffer_capacity - self.pos)
+            _batch_start = self.buffer_capacity - self.pos
             self.pos = 0
             self.full = True
             self.num_stored = self.buffer_capacity
