@@ -184,12 +184,12 @@ class SAC(object):
         ).mean()  # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
         # bc loss on expert actions
 
-        # policy_loss += F.mse_loss(pi[half_batch_size:], action_batch[half_batch_size:])
+        policy_loss += F.mse_loss(pi[half_batch_size:], action_batch[half_batch_size:])
 
         # try weighted by inverse of lmbda in TD3-BC
-        alpha = 2.5
-        scale = min_qf_pi.abs().mean() / alpha
-        policy_loss += (scale * F.mse_loss(pi[half_batch_size:], action_batch[half_batch_size:]))
+        # alpha = 2.5
+        # scale = min_qf_pi.abs().mean() / alpha
+        # policy_loss += (scale * F.mse_loss(pi[half_batch_size:], action_batch[half_batch_size:]))
 
         self.policy_optim.zero_grad()
         policy_loss.backward()
