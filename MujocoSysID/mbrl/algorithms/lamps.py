@@ -156,7 +156,7 @@ def train(
         zero_out_rewards=cfg.train_discriminator,
         use_mbrl_demos=cfg.use_mbrl_demos,
     )
-    env = ResetWrapper(env, qpos, qvel, alpha=1.0)
+    # env = ResetWrapper(env, qpos, qvel, alpha=1.0)
     env = GoalWrapper(env)
     test_env = GoalWrapper(test_env)
     obs_shape = env.observation_space.shape
