@@ -45,5 +45,7 @@ class DiscriminatorEnsemble(nn.Module):
             return torch.median(outputs, dim=0)[0]
         elif self.reduction == "max":
             return torch.max(outputs, dim=0)[0]
+        elif self.reduction == "log":
+            return -torch.log(1 - torch.mean(outputs, dim=0))
         else:
             raise NotImplementedError

@@ -44,17 +44,12 @@ no_regret: false
 
 train_discriminator: true
 update_with_model: false
-schedule_disc_special: false
 n_discs: 7
 disc:
-  start_lr: 8e-4
-  mid_lr: 8e-4
-  end_lr: 8e-4
-  m1: 30_000
-  m2: 100_000
+  lr: 8e-4
   batch_size: 4096
-  freq_train_disc: 5000
-  num_updates_per_step: 4
+  freq_train_disc: 2000
+  num_updates_per_step: 1
   num_traj_samples: 4
 
 experiment: default

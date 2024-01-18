@@ -39,7 +39,7 @@ def run(cfg: omegaconf.DictConfig):
             print(f"disc_ensemble_reduction: {cfg.disc_ensemble_reduction}")
     if cfg.train_discriminator and not cfg.update_with_model:
         print(f"freq_train_disc: {cfg.disc.freq_train_disc}")
-        print(f"disc_lr: {cfg.disc.start_lr:.2E}")
+        print(f"disc_lr: {cfg.disc.lr:.2E}")
         print(f"n_discs: {cfg.n_discs}")
 
     print(f"seed: {cfg.seed}")

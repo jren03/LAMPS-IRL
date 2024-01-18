@@ -41,6 +41,7 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("epoch", "E", "int"),
     ("rollout_length", "RL", "int"),
     ("sac_reset_ratio", "SRR", "float"),
+    ("disc_loss", "DL", "float"),
 ]
 
 
@@ -301,36 +302,20 @@ def train(
         reward_type=dtype,
         fixed_reward_value=1.0 if cfg.disc_binary_reward else None,
     )
-    if cfg.add_exp_to_replay_buffer:
-        replay_buffer.add_batch(
-            expert_dataset["observations"][:1000],
-            expert_dataset["actions"][:1000],
-            expert_dataset["next_observations"][:1000],
-            expert_dataset["rewards"][:1000],
-            expert_dataset["terminals"][:1000],
-        )
-    if cfg.from_end:
-        print(
-            f"{PrintColors.OKBLUE}Adding {cfg.overrides.expert_size} from end of expert dataset"
-        )
-        expert_replay_buffer.add_batch(
-            expert_dataset["observations"][-cfg.overrides.expert_size :],
-            expert_dataset["actions"][-cfg.overrides.expert_size :],
-            expert_dataset["next_observations"][-cfg.overrides.expert_size :],
-            expert_dataset["rewards"][-cfg.overrides.expert_size :],
-            expert_dataset["terminals"][-cfg.overrides.expert_size :],
-        )
-    else:
-        print(
-            f"{PrintColors.OKBLUE}Adding {cfg.overrides.expert_size} from beginning of expert dataset"
-        )
-        expert_replay_buffer.add_batch(
-            expert_dataset["observations"][: cfg.overrides.expert_size],
-            expert_dataset["actions"][: cfg.overrides.expert_size],
-            expert_dataset["next_observations"][: cfg.overrides.expert_size],
-            expert_dataset["rewards"][: cfg.overrides.expert_size],
-            expert_dataset["terminals"][: cfg.overrides.expert_size],
-        )
+    replay_buffer.add_batch(
+        expert_dataset["observations"][: cfg.algorithm.initial_exploration_steps],
+        expert_dataset["actions"][: cfg.algorithm.initial_exploration_steps],
+        expert_dataset["next_observations"][: cfg.algorithm.initial_exploration_steps],
+        expert_dataset["rewards"][: cfg.algorithm.initial_exploration_steps],
+        expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
+    )
+    expert_replay_buffer.add_batch(
+        expert_dataset["observations"][: cfg.overrides.expert_size],
+        expert_dataset["actions"][: cfg.overrides.expert_size],
+        expert_dataset["next_observations"][: cfg.overrides.expert_size],
+        expert_dataset["rewards"][: cfg.overrides.expert_size],
+        expert_dataset["terminals"][: cfg.overrides.expert_size],
+    )
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
@@ -353,18 +338,7 @@ def train(
         pp.pprint(sac_reset_schedule)
         print(PrintColors.ENDC)
     # -------------- discriminator lr schedule ------------------
-    disc_lr = cfg.disc.start_lr
-    disc_lr_schedule = np.array(
-        [
-            [disc_lr, cfg.disc.mid_lr, cfg.disc.m1],
-            [cfg.disc.mid_lr, cfg.disc.end_lr, cfg.disc.m2],
-        ]
-    )
-    disc_ratio_lag = 0
-    if cfg.schedule_disc_special:
-        print(f"{PrintColors.OKBLUE}Discriminator lr schedule:")
-        pp.pprint(disc_lr_schedule)
-        print(PrintColors.ENDC)
+    disc_lr = cfg.disc.lr
     if cfg.no_regret:
         print(f"{PrintColors.OKBLUE}No regret discriminator training")
         print(PrintColors.ENDC)
@@ -410,10 +384,6 @@ def train(
         logger=None if silent else logger,
     )
 
-    if cfg.torch_compile:
-        dynamics_model = torch.compile(dynamics_model)
-        f_net = torch.compile(dynamics_model)
-
     best_eval_reward = -np.inf
     epoch = 0
     disc_steps = 0
@@ -432,16 +402,6 @@ def train(
             sac_buffer, obs_shape, act_shape, sac_buffer_capacity, cfg.seed
         )
         obs, done = None, False
-
-        if cfg.debug_mode and cfg.train_disc_in_model:
-            # ! debug purposes only, remember to remove
-            S_curr, A_curr, s = sample_from_learned_model(
-                test_env,
-                model_env,
-                expert_sb3_agent,
-                cfg.disc.num_traj_samples,
-                rollout_length,
-            )
 
         for steps_epoch in range(cfg.overrides.epoch_length):
             if steps_epoch == 0 or done:
@@ -502,101 +462,17 @@ def train(
                 else:
                     rollout_buffer = policy_buffer
 
-                if cfg.sac_in_real:
-                    rollout_model_and_populate_sac_buffer(
-                        test_env,
-                        rollout_buffer,
-                        agent,
-                        sac_buffer,
-                        cfg.algorithm.sac_samples_action,
-                        rollout_length,
-                        rollout_batch_size,
-                        fixed_reward_value=cfg.disc_binary_reward,
-                    )
-                else:
-                    rollout_model_and_populate_sac_buffer(
-                        model_env,
-                        rollout_buffer,
-                        agent,
-                        sac_buffer,
-                        cfg.algorithm.sac_samples_action,
-                        rollout_length,
-                        rollout_batch_size,
-                        fixed_reward_value=cfg.disc_binary_reward,
-                    )
+                rollout_model_and_populate_sac_buffer(
+                    model_env,
+                    rollout_buffer,
+                    agent,
+                    sac_buffer,
+                    cfg.algorithm.sac_samples_action,
+                    rollout_length,
+                    rollout_batch_size,
+                    fixed_reward_value=cfg.disc_binary_reward,
+                )
                 # print(f"Time for rollout: {time.time() - start_time}")
-
-                # ----------------------- Discriminator Training with Model ----------
-                if cfg.debug_mode or (
-                    cfg.update_with_model and cfg.train_discriminator
-                ):
-                    if cfg.schedule_disc_special:
-                        (
-                            disc_lr_schedule,
-                            disc_lr,
-                            disc_ratio_lag,
-                        ) = mbrl.util.math.get_ratio(
-                            disc_lr_schedule, env_steps, disc_ratio_lag
-                        )
-                    elif not disc_steps == 0:
-                        disc_lr = cfg.disc.start_lr / disc_steps
-                    else:
-                        disc_lr = cfg.disc.start_lr
-                    f_opt = OAdam(f_net.parameters(), lr=disc_lr)
-
-                    if cfg.train_disc_in_model:
-                        S_curr, A_curr, s = sample_from_learned_model(
-                            test_env,
-                            model_env,
-                            agent,
-                            cfg.disc.num_traj_samples,
-                            rollout_length,
-                        )
-                    else:
-                        S_curr, A_curr, s = sample(
-                            test_env,
-                            agent,
-                            cfg.disc.num_traj_samples,
-                            drb,
-                            cfg.no_regret,
-                        )
-                    if cfg.no_regret and len(drb) > cfg.disc.batch_size:
-                        S_curr, A_curr = drb.sample(cfg.disc.batch_size)
-                    learner_sa_pairs = torch.cat(
-                        (torch.from_numpy(S_curr), torch.from_numpy(A_curr)), dim=1
-                    ).to(cfg.device)
-                    # env_steps += s
-                    # tbar.update(s)
-                    for _ in range(cfg.disc.num_updates_per_step):
-                        learner_sa = learner_sa_pairs[
-                            np.random.choice(len(learner_sa_pairs), cfg.disc.batch_size)
-                        ]
-                        expert_batch = expert_replay_buffer.sample(cfg.disc.batch_size)
-                        expert_s, expert_a, *_ = cast(
-                            mbrl.types.TransitionBatch, expert_batch
-                        ).astuple()
-                        expert_sa = torch.cat(
-                            (torch.from_numpy(expert_s), torch.from_numpy(expert_a)),
-                            dim=1,
-                        ).to(cfg.device)
-                        f_opt.zero_grad()
-                        f_learner = f_net(learner_sa.float())
-                        f_expert = f_net(expert_sa.float())
-                        gp = gradient_penalty(learner_sa, expert_sa, f_net)
-                        loss = f_expert.mean() - f_learner.mean() + 10 * gp
-                        loss.backward()
-                        f_opt.step()
-                    disc_steps += 1
-
-                    # print(f"REEE: {updates_made}")
-
-                if debug_mode:
-                    print(
-                        f"Epoch: {epoch}. "
-                        f"SAC buffer size: {len(sac_buffer)}. "
-                        f"Rollout length: {rollout_length}. "
-                        f"Steps: {env_steps}"
-                    )
 
             # --------------- Agent Training -----------------
 
@@ -656,12 +532,11 @@ def train(
                 and updates_made != 0
                 and (updates_made) % cfg.disc.freq_train_disc == 0
             ):
-                # start_time = time.time()
-                # print(f"Discriminator Training: {learning_rate_used}, {disc_steps}")
+                start_time = time.time()
                 if not disc_steps == 0:
-                    disc_lr = cfg.disc.start_lr / disc_steps
+                    disc_lr = cfg.disc.lr / disc_steps
                 else:
-                    disc_lr = cfg.disc.start_lr
+                    disc_lr = cfg.disc.lr
                 f_opt = OAdam(f_net.parameters(), lr=disc_lr)
                 # print(
                 #     f"Discriminator Training: {disc_lr}, {disc_steps}, {updates_made}"
@@ -695,11 +570,10 @@ def train(
                     f_learner = f_net(learner_sa.float())
                     f_expert = f_net(expert_sa.float())
                     gp = gradient_penalty(learner_sa, expert_sa, f_net)
-                    loss = f_expert.mean() - f_learner.mean() + 10 * gp
-                    loss.backward()
+                    disc_loss = f_expert.mean() - f_learner.mean() + 10 * gp
+                    disc_loss.backward()
                     f_opt.step()
                 disc_steps += 1
-                # print(f"Time for discriminator training: {time.time() - start_time}")
                 # print(f"REEE 2: {updates_made}")
 
             # ------ Epoch ended (evaluate and save model) ------
@@ -723,6 +597,7 @@ def train(
                             "episode_reward": avg_reward,
                             "rollout_length": rollout_length,
                             "sac_reset_ratio": sac_reset_ratio,
+                            "disc_loss": disc_loss,
                         },
                     )
                     # print(f"Time for evaluation: {time.time() - start_time}")
@@ -744,17 +619,6 @@ def train(
                             "rollout_length": rollout_length,
                         },
                     )
-                # if avg_reward > best_eval_reward:
-                #     video_recorder.save(f"{epoch}.mp4")
-                #     best_eval_reward = avg_reward
-                #     agent.sac_agent.save_checkpoint(
-                #         ckpt_path=os.path.join(work_dir, "sac.pth")
-                #     )
-
-                if cfg.train_disc_in_model:
-                    # evaluate learner in learned model
-                    pass
-
             tbar.update(1)
             env_steps += 1
             obs = next_obs
