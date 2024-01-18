@@ -1,5 +1,6 @@
 import gym
 import numpy as np
+import torch
 from mbrl.util.common import PrintColors, HiddenPrints
 
 
@@ -30,12 +31,38 @@ class TremblingHandWrapper(gym.Wrapper):
         )
 
     def reset(self, seed=0, options=None):
-        return self.env.reset(seed=seed, options=options)
+        return self.env.reset()
 
     def step(self, action):
         if np.random.uniform() < self.p_tremble:
             action = self.env.action_space.sample()
         return self.env.step(action)
+
+
+class RewardWrapper(gym.Wrapper):
+    def __init__(self, env, function):
+        super().__init__(env)
+        self.env = env
+        self.cur_state = None
+        self.function = function
+        self.low = env.action_space.low
+        self.high = env.action_space.high
+
+    def reset(self):
+        obs = self.env.reset()
+        self.cur_state = obs
+        return obs
+
+    def step(self, action):
+        next_state, _, done, info = self.env.step(action)
+        # combine action and state
+        sa_pair = np.concatenate((self.cur_state, action))
+        reward = -(
+            self.function.forward(torch.tensor(sa_pair, dtype=torch.float).to("cuda"))
+        )
+        self.cur_state = next_state
+
+        return next_state, reward, done, info
 
 
 class ResetWrapper(gym.Wrapper):

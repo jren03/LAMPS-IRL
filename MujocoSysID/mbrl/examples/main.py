@@ -50,7 +50,7 @@ def run(cfg: omegaconf.DictConfig):
     if cfg.debug_mode:
         print(PrintColors.WARNING + "Running in debug mode" + PrintColors.ENDC)
 
-    env, term_fn, reward_fn = mbrl.util.env.EnvHandler.make_env(cfg)
+    env, term_fn, reward_fn, p_tremble = mbrl.util.env.EnvHandler.make_env(cfg)
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
 
@@ -63,7 +63,9 @@ def run(cfg: omegaconf.DictConfig):
         return planet.train(env, cfg, silent=cfg.silent)
     if cfg.algorithm.name == "lamps":
         test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
-        return lamps.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+        return lamps.train(
+            env, test_env, term_fn, cfg, p_tremble=p_tremble, silent=cfg.silent
+        )
     if cfg.algorithm.name == "sysid":
         test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
         return sysid.train(env, test_env, term_fn, cfg, silent=cfg.silent)

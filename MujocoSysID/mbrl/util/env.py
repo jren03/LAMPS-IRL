@@ -103,6 +103,7 @@ def _legacy_make_env(
     if "maze" in env_name:
         env = GoalWrapper(env)
 
+    p_tremble = 0.0
     if cfg.shaky:
         if cfg.p_tremble != -1:
             p_tremble = float(cfg.p_tremble)
@@ -120,9 +121,9 @@ def _legacy_make_env(
             p_tremble = 0.05
         else:
             raise ValueError(f"Invalid environment: {env_name}")
-        env = TremblingHandWrapper(env, p_tremble=p_tremble)
+        # env = TremblingHandWrapper(env, p_tremble=p_tremble)
 
-    return env, term_fn, reward_fn
+    return env, term_fn, reward_fn, p_tremble
 
 
 class Freeze(ABC):

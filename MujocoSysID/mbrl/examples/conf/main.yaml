@@ -16,7 +16,7 @@ use_policy_buffer_adv_update: false
 use_mbrl_demos: false
 train_disc_in_model: false
 
-disc_ensemble: true
+disc_ensemble: false
 disc_ensemble_reduction: "min"
 
 disc_binary_reward: false
@@ -54,8 +54,8 @@ disc:
   m1: 30_000
   m2: 100_000
   batch_size: 4096
-  freq_train_disc: 5000
-  num_updates_per_step: 4
+  freq_train_disc: 10000
+  num_updates_per_step: 1
   num_traj_samples: 4
 
 experiment: default
