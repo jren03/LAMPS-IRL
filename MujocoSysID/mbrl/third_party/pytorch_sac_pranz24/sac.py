@@ -250,9 +250,12 @@ class SAC(object):
             mask_batch = mask_batch.logical_not()
 
         with torch.no_grad():
-            next_state_action, next_state_log_pi, _ = self.policy.sample(
-                next_state_batch
-            )
+            try:
+                next_state_action, next_state_log_pi, _ = self.policy.sample(
+                    next_state_batch
+                )
+            except:
+                breakpoint()
             qf1_next_target, qf2_next_target = self.critic_target(
                 next_state_batch, next_state_action
             )

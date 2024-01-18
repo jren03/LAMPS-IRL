@@ -30,23 +30,11 @@ class DiscriminatorEnsemble(nn.Module):
         self.ensemble = nn.ModuleList(
             [Discriminator(env) for _ in range(n_discriminators)]
         )
-        self.ema_decay = ema_decay
-        self.ema_weights = [p.clone().detach() for p in self.parameters()]
         self.reduction = reduction
         print(f"Using {reduction} reduction for discriminator ensemble")
 
     def forward(self, inputs):
         outputs = torch.stack([disc(inputs) for disc in self.ensemble])
-        if self.training:
-            # Update EMA weights
-            with torch.no_grad():
-                for ema_w, w in zip(self.ema_weights, self.parameters()):
-                    ema_w.mul_(self.ema_decay).add_((1 - self.ema_decay) * w.data)
-        else:
-            # Use EMA weights for inference
-            with torch.no_grad():
-                for ema_w, w in zip(self.ema_weights, self.parameters()):
-                    w.data.copy_(ema_w)
         if self.reduction == "min":
             return torch.min(outputs, dim=0)[0]
         elif self.reduction == "mean":
@@ -56,6 +44,15 @@ class DiscriminatorEnsemble(nn.Module):
         elif self.reduction == "max":
             return torch.max(outputs, dim=0)[0]
         elif self.reduction == "log":
-            return -torch.log(1 - torch.mean(outputs, dim=0) + 1e-8)
+            red = torch.clamp(
+                -torch.log(1 - torch.mean(outputs, dim=0) + 1e-8), min=-4, max=15
+            )
+            if torch.isnan(red).any():
+                breakpoint()
+                raise ValueError("NaN in discriminator output")
+            if torch.isinf(red).any():
+                breakpoint()
+                raise ValueError("Inf in discriminator output")
+            return red
         else:
             raise NotImplementedError

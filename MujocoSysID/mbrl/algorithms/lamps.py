@@ -28,9 +28,11 @@ from mbrl.models.discriminator import Discriminator, DiscriminatorEnsemble
 from mbrl.util.oadam import OAdam
 from mbrl.util.common import gradient_penalty, PrintColors
 from mbrl.util.discriminator_replay_buffer import DiscriminatorReplayBuffer
+from ema_pytorch import EMA
 
 import d4rl
 from tqdm import tqdm
+from ema_pytorch import EMA
 
 import stable_baselines3 as sb3
 from pathlib import Path
@@ -356,16 +358,28 @@ def train(
     updates_made = 0
     env_steps = 0
     if cfg.train_discriminator:
-        print(
-            f"{PrintColors.OKBLUE}Training with discriminator function{PrintColors.ENDC}"
-        )
         if cfg.disc_ensemble:
+            print(
+                f"{PrintColors.OKBLUE}Training with discriminator function ENSEMBLE{PrintColors.ENDC}"
+            )
             f_net = DiscriminatorEnsemble(
                 env, n_discriminators=cfg.n_discs, reduction=cfg.disc_ensemble_reduction
             ).to(cfg.device)
         else:
+            print(
+                f"{PrintColors.OKBLUE}Training with discriminator function REGULAR{PrintColors.ENDC}"
+            )
             f_net = Discriminator(env).to(cfg.device)
         f_opt = OAdam(f_net.parameters(), lr=disc_lr)
+        if cfg.disc.ema:
+            print(PrintColors.OKBLUE + "Using EMA for discriminator" + PrintColors.ENDC)
+            ema = EMA(
+                f_net,
+                update_after_step=20,
+                update_every=2,
+                inv_gamma=1,
+                power=3 / 4,
+            )
         model_env = mbrl.models.ModelEnv(
             env, dynamics_model, termination_fn, f_net, generator=torch_generator
         )
@@ -573,6 +587,8 @@ def train(
                     disc_loss = f_expert.mean() - f_learner.mean() + 10 * gp
                     disc_loss.backward()
                     f_opt.step()
+                    if cfg.disc.ema:
+                        ema.update()
                 disc_steps += 1
                 # print(f"REEE 2: {updates_made}")
 

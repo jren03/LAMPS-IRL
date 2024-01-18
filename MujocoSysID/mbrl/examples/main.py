@@ -41,6 +41,7 @@ def run(cfg: omegaconf.DictConfig):
         print(f"freq_train_disc: {cfg.disc.freq_train_disc}")
         print(f"disc_lr: {cfg.disc.lr:.2E}")
         print(f"n_discs: {cfg.n_discs}")
+        print(f"use ema: {cfg.disc.ema}")
 
     print(f"seed: {cfg.seed}")
     print(
