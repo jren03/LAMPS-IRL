@@ -1,3 +1,4 @@
+from tokenize import maybe
 from gym import spaces
 import numpy as np
 from typing import Dict, Generator, Optional, Union
@@ -23,6 +24,7 @@ class HybridReplayBuffer(ReplayBuffer):
         expert_data: dict = dict(),
         balanced_sampling: bool = False,
         fixed_hybrid_schedule: bool = False,
+        starting_size_limit: int = 1000,
     ):
         super(HybridReplayBuffer, self).__init__(
             buffer_size,
@@ -47,11 +49,125 @@ class HybridReplayBuffer(ReplayBuffer):
         self.offline_schedule = np.array([[0.2, 0.2, 300000], [0.2, 0.1, int(1e6)]])
         self.steps = 0
         self.ratio_lag = 0
+        self.ratio = self.offline_schedule[0, 0]
         if self.balanced_sampling:
             print("=============== BALANCED SAMPLING =================")
             print(f"=============== {self.offline_schedule} =================")
         else:
             print("=============== REGULAR SAMPLING =================")
+
+        self.buffer_capacity = starting_size_limit
+        self.num_stored = 0
+
+    def size(self) -> int:
+        """
+        :return: (int) The current size of the buffer
+        """
+        return self.num_stored
+
+    def sample(
+        self, batch_size: int, env: Optional[VecNormalize] = None
+    ) -> ReplayBufferSamples:
+        """
+        Sample elements from the replay buffer.
+        Custom sampling when using memory efficient variant,
+        as we should not sample the element with index `self.pos`
+        See https://github.com/DLR-RM/stable-baselines3/pull/28#issuecomment-637559274
+
+        :param batch_size: (int) Number of element to sample
+        :param env: (Optional[VecNormalize]) associated gym VecEnv
+            to normalize the observations/rewards when sampling
+        :return: (Union[RolloutBufferSamples, ReplayBufferSamples])
+        """
+        batch_inds = np.random.randint(0, self.num_stored, size=batch_size)
+        return self._get_samples(batch_inds, env=env)
+
+    def maybe_update_buffer_capacity(self, maybe_new_capacity: int):
+        """
+        if maybe_new_capacity > self.buffer_capacity, increase size of buffer and reset pointer
+        """
+        if maybe_new_capacity <= self.buffer_capacity:
+            return
+        self.pos = self.buffer_capacity
+        self.buffer_capacity = maybe_new_capacity
+        self.full = False
+
+    def normalize_expert_obs(self, obs):
+        def compute_mean_std(states: np.ndarray, eps: float):
+            mean = states.mean(0)
+            std = states.std(0) + eps
+            return mean, std
+
+        def normalize_states(states: np.ndarray, mean: np.ndarray, std: np.ndarray):
+            return (states - mean) / std
+
+        state_mean, state_std = compute_mean_std(obs, eps=1e-3)
+        return normalize_states(obs, state_mean, state_std)
+
+    # Override add() so that it works with buffer_capacity
+    def add(
+        self,
+        obs: np.ndarray,
+        next_obs: np.ndarray,
+        action: np.ndarray,
+        reward: np.ndarray,
+        done: np.ndarray,
+    ) -> None:
+        # Copy to avoid modification by reference
+        self.observations[self.pos] = np.array(obs).copy()
+        if self.optimize_memory_usage:
+            self.observations[(self.pos + 1) % self.buffer_capacity] = np.array(
+                next_obs
+            ).copy()
+        else:
+            self.next_observations[self.pos] = np.array(next_obs).copy()
+
+        self.actions[self.pos] = np.array(action).copy()
+        self.rewards[self.pos] = np.array(reward).copy()
+        self.dones[self.pos] = np.array(done).copy()
+
+        self.pos = (self.pos + 1) % self.buffer_capacity
+        self.num_stored = min(self.num_stored + 1, self.buffer_capacity)
+        if self.pos == self.buffer_capacity:
+            self.full = True
+
+    def add_batch(
+        self,
+        obs: np.ndarray,
+        next_obs: np.ndarray,
+        action: np.ndarray,
+        reward: np.ndarray,
+        done: np.ndarray,
+    ) -> None:
+        if len(obs.shape) == 2:
+            # unsqueeze 1st dimension for n_envs
+            obs = np.expand_dims(obs, 1)
+            next_obs = np.expand_dims(next_obs, 1)
+            action = np.expand_dims(action, 1)
+            reward = np.expand_dims(reward, 1)
+            done = np.expand_dims(done, 1)
+
+        def copy_from_to(buffer_start, batch_start, how_many):
+            buffer_slice = slice(buffer_start, buffer_start + how_many)
+            batch_slice = slice(batch_start, batch_start + how_many)
+            np.copyto(self.observations[buffer_slice], obs[batch_slice])
+            np.copyto(self.actions[buffer_slice], action[batch_slice])
+            np.copyto(self.rewards[buffer_slice], reward[batch_slice])
+            np.copyto(self.next_observations[buffer_slice], next_obs[batch_slice])
+            np.copyto(self.dones[buffer_slice], done[batch_slice])
+
+        _batch_start = 0
+        buffer_end = self.pos + len(obs)
+        if buffer_end > self.buffer_capacity:
+            copy_from_to(self.pos, _batch_start, self.buffer_capacity - self.pos)
+            self.pos = 0
+            self.full = True
+            self.num_stored = self.buffer_capacity
+
+        _how_many = len(obs) - _batch_start
+        copy_from_to(self.pos, _batch_start, _how_many)
+        self.pos = (self.pos + _how_many) % self.buffer_capacity
+        self.num_stored = min(self.num_stored + _how_many, self.buffer_capacity)
 
     def _get_ratio(self, t):
         if self.fixed_hybrid_schedule:
@@ -63,6 +179,7 @@ class HybridReplayBuffer(ReplayBuffer):
         ratio = max_lr - min(1, (t - self.ratio_lag) / (lr_steps - self.ratio_lag)) * (
             max_lr - min_lr
         )
+        self.ratio = ratio  # this line is purely for logging purposes
         self.steps += 1
         return ratio
 
@@ -193,15 +310,3 @@ class HybridReplayBuffer(ReplayBuffer):
                 ),
             )
             return ReplayBufferSamples(*tuple(map(self.to_torch, data)))
-
-    def normalize_expert_obs(self, obs):
-        def compute_mean_std(states: np.ndarray, eps: float):
-            mean = states.mean(0)
-            std = states.std(0) + eps
-            return mean, std
-
-        def normalize_states(states: np.ndarray, mean: np.ndarray, std: np.ndarray):
-            return (states - mean) / std
-
-        state_mean, state_std = compute_mean_std(obs, eps=1e-3)
-        return normalize_states(obs, state_mean, state_std)
