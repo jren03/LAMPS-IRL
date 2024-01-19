@@ -9,7 +9,11 @@ from mbrl.third_party.pytorch_sac_pranz24.model import (
     GaussianPolicy,
     QNetwork,
 )
-from mbrl.third_party.pytorch_sac_pranz24.utils import hard_update, soft_update
+from mbrl.third_party.pytorch_sac_pranz24.utils import (
+    hard_update,
+    soft_update,
+    linear_schedule,
+)
 
 from mbrl.util.common import PrintColors as PC
 
@@ -65,14 +69,6 @@ class SAC(object):
         self.f_net = None
         self.relabel_samples = relabel_samples
 
-        if args.torch_compile:
-            self._compile_networks()
-
-    def _compile_networks(self):
-        self.critic = torch.compile(self.critic)
-        self.critic_target = torch.compile(self.critic_target)
-        self.policy = torch.compile(self.policy)
-
     def add_f_net(self, f_net):
         self.f_net = f_net
         if self.relabel_samples:
@@ -87,6 +83,19 @@ class SAC(object):
                 + "WARNING: SAC is NOT relabeling samples with f_net. This is standard SAC."
                 + PC.ENDC
             )
+
+    def reset_optimizers(self):
+        self.critic_optim = Adam(self.critic.parameters(), lr=self.args.lr)
+        self.policy_optim = Adam(self.policy.parameters(), lr=self.args.lr)
+        self.alpha_optim = Adam([self.log_alpha], lr=self.args.lr)
+        self.get_schedule_fn = linear_schedule(self.args.lr)
+        self.updates_made = 0
+
+    def step_lr(self):
+        optimizers = [self.critic_optim, self.policy_optim, self.alpha_optim]
+        for optim in optimizers:
+            for param_group in optim.param_groups:
+                param_group["lr"] /= max(self.updates_made, 1)
 
     def select_action(self, state, batched=False, evaluate=False):
         state = torch.FloatTensor(state)
@@ -181,33 +190,33 @@ class SAC(object):
             self.alpha_optim.step()
 
             self.alpha = self.log_alpha.exp()
-            alpha_tlogs = self.alpha.clone()  # For TensorboardX logs
+            # alpha_tlogs = self.alpha.clone()  # For TensorboardX logs
         else:
             alpha_loss = torch.tensor(0.0).to(self.device)
-            alpha_tlogs = torch.tensor(self.alpha)  # For TensorboardX logs
+            # alpha_tlogs = torch.tensor(self.alpha)  # For TensorboardX logs
 
         if updates % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
 
-        if logger is not None:
-            logger.log("train/batch_reward", reward_batch.mean(), updates)
-            logger.log("train_critic/loss", qf_loss, updates)
-            logger.log("train_actor/loss", policy_loss, updates)
-            if self.automatic_entropy_tuning:
-                logger.log("train_actor/target_entropy", self.target_entropy, updates)
-            else:
-                logger.log("train_actor/target_entropy", 0, updates)
-            logger.log("train_actor/entropy", -log_pi.mean(), updates)
-            logger.log("train_alpha/loss", alpha_loss, updates)
-            logger.log("train_alpha/value", self.alpha, updates)
+        # if logger is not None:
+        #     logger.log("train/batch_reward", reward_batch.mean(), updates)
+        #     logger.log("train_critic/loss", qf_loss, updates)
+        #     logger.log("train_actor/loss", policy_loss, updates)
+        #     if self.automatic_entropy_tuning:
+        #         logger.log("train_actor/target_entropy", self.target_entropy, updates)
+        #     else:
+        #         logger.log("train_actor/target_entropy", 0, updates)
+        #     logger.log("train_actor/entropy", -log_pi.mean(), updates)
+        #     logger.log("train_alpha/loss", alpha_loss, updates)
+        #     logger.log("train_alpha/value", self.alpha, updates)
 
-        return (
-            qf1_loss.item(),
-            qf2_loss.item(),
-            policy_loss.item(),
-            alpha_loss.item(),
-            alpha_tlogs.item(),
-        )
+        # return (
+        #     qf1_loss.item(),
+        #     qf2_loss.item(),
+        #     policy_loss.item(),
+        #     alpha_loss.item(),
+        #     alpha_tlogs.item(),
+        # )
 
     def adv_update_parameters(
         self,
@@ -308,33 +317,33 @@ class SAC(object):
             self.alpha_optim.step()
 
             self.alpha = self.log_alpha.exp()
-            alpha_tlogs = self.alpha.clone()  # For TensorboardX logs
+            # alpha_tlogs = self.alpha.clone()  # For TensorboardX logs
         else:
             alpha_loss = torch.tensor(0.0).to(self.device)
-            alpha_tlogs = torch.tensor(self.alpha)  # For TensorboardX logs
+            # alpha_tlogs = torch.tensor(self.alpha)  # For TensorboardX logs
 
         if updates % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
 
-        if logger is not None:
-            logger.log("train/batch_reward", reward_batch.mean(), updates)
-            logger.log("train_critic/loss", qf_loss, updates)
-            logger.log("train_actor/loss", policy_loss, updates)
-            if self.automatic_entropy_tuning:
-                logger.log("train_actor/target_entropy", self.target_entropy, updates)
-            else:
-                logger.log("train_actor/target_entropy", 0, updates)
-            logger.log("train_actor/entropy", -log_pi.mean(), updates)
-            logger.log("train_alpha/loss", alpha_loss, updates)
-            logger.log("train_alpha/value", self.alpha, updates)
+        # if logger is not None:
+        #     logger.log("train/batch_reward", reward_batch.mean(), updates)
+        #     logger.log("train_critic/loss", qf_loss, updates)
+        #     logger.log("train_actor/loss", policy_loss, updates)
+        #     if self.automatic_entropy_tuning:
+        #         logger.log("train_actor/target_entropy", self.target_entropy, updates)
+        #     else:
+        #         logger.log("train_actor/target_entropy", 0, updates)
+        #     logger.log("train_actor/entropy", -log_pi.mean(), updates)
+        #     logger.log("train_alpha/loss", alpha_loss, updates)
+        #     logger.log("train_alpha/value", self.alpha, updates)
 
-        return (
-            qf1_loss.item(),
-            qf2_loss.item(),
-            policy_loss.item(),
-            alpha_loss.item(),
-            alpha_tlogs.item(),
-        )
+        # return (
+        #     qf1_loss.item(),
+        #     qf2_loss.item(),
+        #     policy_loss.item(),
+        #     alpha_loss.item(),
+        #     alpha_tlogs.item(),
+        # )
 
     # relabel rewards with f_net
     @torch.no_grad()
