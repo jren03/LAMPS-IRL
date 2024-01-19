@@ -40,4 +40,4 @@ agent:
     device: ${device}
     lr: ${overrides.sac_lr}
     schedule_lr: ${sac_schedule_lr}
-    torch_compile: ${torch_compile}
+    total_timesteps: ${disc.freq_train_disc}

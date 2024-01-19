@@ -403,6 +403,7 @@ def train(
     disc_steps = 0
     sac_buffer = None
 
+    agent.sac_agent.reset_optimizers()
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
@@ -534,27 +535,22 @@ def train(
                             reverse_mask=True,
                         )
 
-                updates_made += 1
-                if not silent and updates_made % cfg.log_frequency_agent == 0:
-                    logger.dump(updates_made, save=True)
+            agent.sac_agent.updates_made += cfg.overrides.num_sac_updates_per_step
+            agent.sac_agent.step_lr()
             # print(f"Time for agent training: {time.time() - start_time}")
 
             # ------ Discriminator Training ------
             if (
                 cfg.train_discriminator
                 and not cfg.update_with_model
-                and updates_made != 0
-                and (updates_made) % cfg.disc.freq_train_disc == 0
+                and agent.sac_agent.updates_made != 0
+                and (agent.sac_agent.updates_made) % cfg.disc.freq_train_disc == 0
             ):
-                start_time = time.time()
                 if not disc_steps == 0:
                     disc_lr = cfg.disc.lr / disc_steps
                 else:
                     disc_lr = cfg.disc.lr
                 f_opt = OAdam(f_net.parameters(), lr=disc_lr)
-                # print(
-                #     f"Discriminator Training: {disc_lr}, {disc_steps}, {updates_made}"
-                # )
 
                 S_curr, A_curr, s = sample(
                     test_env,
@@ -590,6 +586,8 @@ def train(
                     if cfg.disc.ema:
                         ema.update()
                 disc_steps += 1
+                print("Updated discriminator")
+                agent.sac_agent.reset_optimizers()
                 # print(f"REEE 2: {updates_made}")
 
             # ------ Epoch ended (evaluate and save model) ------

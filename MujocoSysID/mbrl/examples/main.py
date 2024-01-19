@@ -42,6 +42,8 @@ def run(cfg: omegaconf.DictConfig):
         print(f"disc_lr: {cfg.disc.lr:.2E}")
         print(f"n_discs: {cfg.n_discs}")
         print(f"use ema: {cfg.disc.ema}")
+        # make sure discriminator can be updated approrpriately
+        assert cfg.disc.freq_train_disc % cfg.overrides.num_sac_updates_per_step == 0
 
     print(f"seed: {cfg.seed}")
     print(

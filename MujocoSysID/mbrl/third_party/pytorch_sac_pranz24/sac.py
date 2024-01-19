@@ -68,6 +68,7 @@ class SAC(object):
 
         self.f_net = None
         self.relabel_samples = relabel_samples
+        self.total_timesteps = args.total_timesteps
 
     def add_f_net(self, f_net):
         self.f_net = f_net
@@ -95,7 +96,12 @@ class SAC(object):
         optimizers = [self.critic_optim, self.policy_optim, self.alpha_optim]
         for optim in optimizers:
             for param_group in optim.param_groups:
-                param_group["lr"] /= max(self.updates_made, 1)
+                progress_remaining = max(
+                    1 - self.updates_made / self.total_timesteps, 1e-8
+                )
+                param_group["lr"] = self.get_schedule_fn(progress_remaining)
+                print(param_group["lr"], end="\t")
+        print()
 
     def select_action(self, state, batched=False, evaluate=False):
         state = torch.FloatTensor(state)
