@@ -220,22 +220,6 @@ def train(
         cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
     )
 
-    if cfg.train_disc_in_model:
-        # load in SB3 model used to collect data
-        expert_base_path = Path(
-            "/share/portal/jlr429/pessimistic-irl/fast_irl/experts/"
-        )
-        env_name = cfg.overrides.env.lower()
-        if "humanoid" in env_name:
-            env_name = "Humanoid-v3"
-        elif "ant" in env_name and "truncated" in env_name:
-            env_name = "Ant-v3"
-        else:
-            env_name = env_name.replace("gym___", "")
-        expert_path = Path(expert_base_path, f"{env_name}/expert")
-        expert_sb3_agent = sb3.SAC.load(str(expert_path))
-        print(f"{PrintColors.BOLD}Loading expert agent from {expert_path}")
-
     is_maze = "maze" in cfg.overrides.env
     expert_dataset = fetch_demos(
         cfg.overrides.env,
