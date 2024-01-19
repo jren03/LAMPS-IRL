@@ -166,6 +166,15 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
             dataset["next_observations"] = dataset["next_observations"][:, :obs_dim]
             print(f"New dataset shape: {dataset['observations'].shape}")
 
+        qpos = np.array(
+            [dataset["qpos"][exp_range[0] : exp_range[1]] for exp_range in exp_ranges],
+            dtype=object,
+        )
+        qvel = np.array(
+            [dataset["qvel"][exp_range[0] : exp_range[1]] for exp_range in exp_ranges],
+            dtype=object,
+        )
+
     if zero_out_rewards:
         dataset["rewards"] = np.zeros_like(dataset["rewards"])
 
@@ -177,4 +186,4 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
     )
     print("-" * 80)
 
-    return dataset
+    return dataset, qpos, qvel

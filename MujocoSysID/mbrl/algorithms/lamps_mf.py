@@ -21,6 +21,7 @@ import mbrl.types
 import mbrl.util
 import mbrl.util.common
 import mbrl.util.math
+from mbrl.env.gym_wrappers import ResetWrapper
 from mbrl.planning.sac_wrapper import SACAgent
 from mbrl.third_party.pytorch_sac import VideoRecorder
 from mbrl.util.fetch_demos import fetch_demos
@@ -210,28 +211,13 @@ def train(
         cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
     )
 
-    if cfg.train_disc_in_model:
-        # load in SB3 model used to collect data
-        expert_base_path = Path(
-            "/share/portal/jlr429/pessimistic-irl/fast_irl/experts/"
-        )
-        env_name = cfg.overrides.env.lower()
-        if "humanoid" in env_name:
-            env_name = "Humanoid-v3"
-        elif "ant" in env_name and "truncated" in env_name:
-            env_name = "Ant-v3"
-        else:
-            env_name = env_name.replace("gym___", "")
-        expert_path = Path(expert_base_path, f"{env_name}/expert")
-        expert_sb3_agent = sb3.SAC.load(str(expert_path))
-        print(f"{PrintColors.BOLD}Loading expert agent from {expert_path}")
-
     is_maze = "maze" in cfg.overrides.env
-    expert_dataset, *_ = fetch_demos(
+    expert_dataset, qpos, qvel = fetch_demos(
         cfg.overrides.env,
         zero_out_rewards=cfg.train_discriminator,
         use_mbrl_demos=cfg.use_mbrl_demos,
     )
+    env = ResetWrapper(env, qpos=qpos, qvel=qvel)
 
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
@@ -251,37 +237,8 @@ def train(
         torch_generator.manual_seed(cfg.seed)
 
     # -------------- Create initial overrides. dataset --------------
-    dynamics_model = mbrl.util.common.create_one_dim_tr_model(cfg, obs_shape, act_shape)
     use_double_dtype = cfg.algorithm.get("normalize_double_precision", False)
     dtype = np.double if use_double_dtype else np.float32
-    replay_buffer = mbrl.util.common.create_replay_buffer(
-        cfg,
-        obs_shape,
-        act_shape,
-        rng=rng,
-        obs_type=dtype,
-        action_type=dtype,
-        reward_type=dtype,
-    )
-    policy_buffer = mbrl.util.common.create_replay_buffer(
-        cfg,
-        obs_shape,
-        act_shape,
-        rng=rng,
-        obs_type=dtype,
-        action_type=dtype,
-        reward_type=dtype,
-        fixed_reward_value=0.0 if cfg.disc_binary_reward else None,
-    )
-    random_explore = cfg.algorithm.random_initial_explore
-    mbrl.util.common.rollout_agent_trajectories(
-        env,
-        cfg.algorithm.initial_exploration_steps,
-        mbrl.planning.RandomAgent(env) if random_explore else agent,
-        {} if random_explore else {"sample": True, "batched": False},
-        replay_buffer=replay_buffer,
-        additional_buffer=policy_buffer,
-    )
 
     # ------------ Fill expert buffer ---------------------
     expert_replay_buffer = mbrl.util.common.create_replay_buffer(
@@ -292,14 +249,6 @@ def train(
         obs_type=dtype,
         action_type=dtype,
         reward_type=dtype,
-        fixed_reward_value=1.0 if cfg.disc_binary_reward else None,
-    )
-    replay_buffer.add_batch(
-        expert_dataset["observations"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["actions"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["next_observations"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["rewards"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
     )
     expert_replay_buffer.add_batch(
         expert_dataset["observations"][: cfg.overrides.expert_size],
@@ -308,9 +257,6 @@ def train(
         expert_dataset["rewards"][: cfg.overrides.expert_size],
         expert_dataset["terminals"][: cfg.overrides.expert_size],
     )
-
-    # ---------------------------------------------------------
-    # --------------------- Training Loop ---------------------
 
     # --------------- SAC reset ratio schedule -----------------
     model_reset_schedule = np.array(
@@ -346,10 +292,6 @@ def train(
     sac_reset_ratio = sac_reset_schedule[0, 0]
     sac_ratio_lag = 0
 
-    if cfg.schedule_sac_ratio:
-        print(f"{PrintColors.OKBLUE}Scheduling SAC reset ratio:")
-        pp.pprint(sac_reset_schedule)
-        print(PrintColors.ENDC)
     # -------------- discriminator lr schedule ------------------
     disc_lr = cfg.disc.lr
     if cfg.no_regret:
@@ -391,30 +333,18 @@ def train(
                 inv_gamma=1,
                 power=3 / 4,
             )
-        model_env = mbrl.models.ModelEnv(
-            env, dynamics_model, termination_fn, f_net, generator=torch_generator
-        )
         agent.sac_agent.add_f_net(f_net)
     else:
         print(
             f"{PrintColors.OKBLUE}Training with ground truth rewards{PrintColors.ENDC}"
         )
-        model_env = mbrl.models.ModelEnv(
-            env, dynamics_model, termination_fn, None, generator=torch_generator
-        )
-    model_trainer = mbrl.models.ModelTrainer(
-        dynamics_model,
-        optim_lr=cfg.overrides.model_lr,
-        weight_decay=cfg.overrides.model_wd,
-        logger=None if silent else logger,
-    )
 
     best_eval_reward = -np.inf
     epoch = 0
     disc_steps = 0
     sac_buffer = None
 
-    agent.reset_optimizers()
+    agent.sac_agent.reset_optimizers()
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
@@ -434,117 +364,29 @@ def train(
                 obs, done = env.reset(), False
             # --- Doing env step and adding to model dataset ---
             # start_time = time.time()
-            next_obs, reward, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
-                env, obs, agent, {}, replay_buffer, policy_buffer
+            obs, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
+                env, obs, agent, {}, sac_buffer
             )
-
-            (
-                exp_obs,
-                exp_next_obs,
-                exp_act,
-                exp_reward,
-                exp_done,
-            ) = expert_replay_buffer.sample_one()
-            replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
-            # print(f"Time for env step: {time.time() - start_time}")
-
-            # --------------- Model Training -----------------
-            if (
-                cfg.debug_mode
-                or (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0
-            ):
-                # ! reset to 50/50 learner/expert states
-                # start_time = time.time()
-                # use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
-                model_train_buffer = replay_buffer
-                mbrl.util.common.train_model_and_save_model_and_data(
-                    dynamics_model,
-                    model_trainer,
-                    cfg.overrides,
-                    model_train_buffer,
-                    work_dir=work_dir,
-                )
-                # print(
-                #     f"Time for model training: {time.time() - start_time}, {len(replay_buffer)=}"
-                # )
-
-                # --------- Rollout new model and store imagined trajectories --------
-                # Batch all rollouts for the next freq_train_model steps together
-                # ! reset to expert states
-                # start_time = time.time()
-                (
-                    model_reset_schedule,
-                    model_reset_ratio,
-                    model_ratio_lag,
-                ) = mbrl.util.math.get_ratio(
-                    model_reset_schedule, env_steps, model_ratio_lag
-                )
-                reset_to_exp_states = rng.random() < model_reset_ratio
-                if cfg.use_yuda_default:
-                    rollout_buffer = replay_buffer
-                elif reset_to_exp_states:
-                    rollout_buffer = expert_replay_buffer
-                else:
-                    rollout_buffer = policy_buffer
-                rollout_model_and_populate_sac_buffer(
-                    model_env,
-                    rollout_buffer,
-                    agent,
-                    sac_buffer,
-                    cfg.algorithm.sac_samples_action,
-                    rollout_length,
-                    rollout_batch_size,
-                )
-                # print(f"Time for rollout: {time.time() - start_time}")
 
             # --------------- Agent Training -----------------
 
             # start_time = time.time()
             for _ in range(cfg.overrides.num_sac_updates_per_step):
-                use_real_data = rng.random() < cfg.algorithm.real_data_ratio
-                # ! which buffer is always sac_buffer because use_real_data is always False
-                which_buffer = replay_buffer if use_real_data else sac_buffer
-                if (env_steps + 1) % cfg.overrides.sac_updates_every_steps != 0 or len(
-                    which_buffer
+                if (env_steps) % cfg.overrides.sac_updates_every_steps != 0 or len(
+                    sac_buffer
                 ) < cfg.overrides.sac_batch_size:
                     break  # only update every once in a while
 
-                if cfg.overrides.policy_exp_ratio > 1:
-                    agent.sac_agent.update_parameters(
-                        which_buffer,
-                        cfg.overrides.sac_batch_size,
-                        updates_made,
-                        logger,
-                        reverse_mask=True,
-                    )
-
-                else:
-                    # ! policy_exp_ratio == 0 for everything except pointmaze
-                    # ! should update actor and critic on rollouts in the learned model
-                    if rng.random() < cfg.overrides.policy_exp_ratio:
-                        agent.sac_agent.adv_update_parameters(
-                            which_buffer,
-                            expert_replay_buffer,
-                            cfg.overrides.sac_batch_size,
-                            updates_made,
-                            logger,
-                            reverse_mask=True,
-                        )
-
-                    else:
-                        agent.sac_agent.adv_update_parameters(
-                            which_buffer,
-                            policy_buffer
-                            if cfg.use_yuda_default or cfg.use_policy_buffer_adv_update
-                            else sac_buffer,
-                            cfg.overrides.sac_batch_size,
-                            updates_made,
-                            logger,
-                            reverse_mask=True,
-                        )
-
-                agent.updates_made += 1
-                agent.step_lr()
+                agent.sac_agent.bc_reg_update_parameters(
+                    sac_buffer,
+                    expert_replay_buffer,
+                    cfg.overrides.sac_batch_size,
+                    updates_made,
+                    logger,
+                    reverse_mask=True,
+                )
+                agent.sac_agent.updates_made += 1
+                agent.sac_agent.step_lr()
                 if not silent and updates_made % cfg.log_frequency_agent == 0:
                     logger.dump(updates_made, save=True)
             # print(f"Time for agent training: {time.time() - start_time}")
@@ -553,18 +395,15 @@ def train(
             if (
                 cfg.train_discriminator
                 and not cfg.update_with_model
-                and updates_made != 0
-                and (updates_made) % cfg.disc.freq_train_disc == 0
+                and agent.sac_agent.updates_made != 0
+                and (agent.sac_agent.updates_made) % cfg.disc.freq_train_disc == 0
             ):
-                start_time = time.time()
+                print("HERE")
                 if not disc_steps == 0:
                     disc_lr = cfg.disc.lr / disc_steps
                 else:
                     disc_lr = cfg.disc.lr
                 f_opt = OAdam(f_net.parameters(), lr=disc_lr)
-                # print(
-                #     f"Discriminator Training: {disc_lr}, {disc_steps}, {updates_made}"
-                # )
 
                 S_curr, A_curr, s = sample(
                     test_env,
@@ -600,7 +439,7 @@ def train(
                     if cfg.disc.ema:
                         ema.update()
                 disc_steps += 1
-                agent.reset_optimizers()
+                agent.sac_agent.reset_optimizers()
                 # print(f"REEE 2: {updates_made}")
 
             # ------ Epoch ended (evaluate and save model) ------

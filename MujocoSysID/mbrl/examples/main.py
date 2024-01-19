@@ -12,6 +12,7 @@ import mbrl.algorithms.pets as pets
 import mbrl.algorithms.planet as planet
 import mbrl.algorithms.lamps as lamps
 import mbrl.algorithms.sysid as sysid
+import mbrl.algorithms.lamps_mf as lamps_mf
 from mbrl.util.common import PrintColors
 # import mbrl.algorithms.mm as mm
 
@@ -65,6 +66,9 @@ def run(cfg: omegaconf.DictConfig):
     if cfg.algorithm.name == "lamps":
         test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
         return lamps.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+    if cfg.algorithm.name == "lamps_mf":
+        test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
+        return lamps_mf.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     if cfg.algorithm.name == "sysid":
         test_env, *_ = mbrl.util.env.EnvHandler.make_env(cfg)
         return sysid.train(env, test_env, term_fn, cfg, silent=cfg.silent)
