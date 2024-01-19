@@ -414,7 +414,7 @@ def train(
     disc_steps = 0
     sac_buffer = None
 
-    agent.reset_optimizers()
+    agent.sac_agent.reset_optimizers()
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
@@ -514,7 +514,7 @@ def train(
                         which_buffer,
                         cfg.overrides.sac_batch_size,
                         updates_made,
-                        logger,
+                        logger=None,
                         reverse_mask=True,
                     )
 
@@ -527,7 +527,7 @@ def train(
                             expert_replay_buffer,
                             cfg.overrides.sac_batch_size,
                             updates_made,
-                            logger,
+                            logger=None,
                             reverse_mask=True,
                         )
 
@@ -539,24 +539,21 @@ def train(
                             else sac_buffer,
                             cfg.overrides.sac_batch_size,
                             updates_made,
-                            logger,
+                            logger=None,
                             reverse_mask=True,
                         )
 
-                agent.updates_made += 1
-                agent.step_lr()
-                if not silent and updates_made % cfg.log_frequency_agent == 0:
-                    logger.dump(updates_made, save=True)
+                agent.sac_agent.updates_made += 1
+                agent.sac_agent.step_lr()
             # print(f"Time for agent training: {time.time() - start_time}")
 
             # ------ Discriminator Training ------
             if (
                 cfg.train_discriminator
                 and not cfg.update_with_model
-                and updates_made != 0
-                and (updates_made) % cfg.disc.freq_train_disc == 0
+                and agent.sac_agent.updates_made != 0
+                and (agent.sac_agent.updates_made) % cfg.disc.freq_train_disc == 0
             ):
-                start_time = time.time()
                 if not disc_steps == 0:
                     disc_lr = cfg.disc.lr / disc_steps
                 else:
@@ -600,7 +597,7 @@ def train(
                     if cfg.disc.ema:
                         ema.update()
                 disc_steps += 1
-                agent.reset_optimizers()
+                agent.sac_agent.reset_optimizers()
                 # print(f"REEE 2: {updates_made}")
 
             # ------ Epoch ended (evaluate and save model) ------

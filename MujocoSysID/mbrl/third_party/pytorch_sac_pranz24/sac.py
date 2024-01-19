@@ -45,6 +45,11 @@ class SAC(object):
                     self.target_entropy = -torch.prod(
                         torch.Tensor(action_space.shape).to(self.device)
                     ).item()
+                    print(
+                        "Automatically setting target entropy to {}".format(
+                            self.target_entropy
+                        )
+                    )
                 else:
                     self.target_entropy = args.target_entropy
                 self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
@@ -125,14 +130,14 @@ class SAC(object):
             mask_batch,
         ) = memory.sample(batch_size).astuple()
 
-        state_batch = torch.FloatTensor(state_batch).to(self.device)
-        next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
-        action_batch = torch.FloatTensor(action_batch).to(self.device)
-        mask_batch = torch.FloatTensor(mask_batch).to(self.device).unsqueeze(1)
+        state_batch = torch.from_numpy(state_batch).to(self.device)
+        next_state_batch = torch.from_numpy(next_state_batch).to(self.device)
+        action_batch = torch.from_numpy(action_batch).to(self.device)
+        mask_batch = torch.from_numpy(mask_batch).to(self.device).unsqueeze(1)
         reward_batch = self._relabel_with_f_net(
             state_batch,
             action_batch,
-            torch.FloatTensor(reward_batch).to(self.device).unsqueeze(1),
+            torch.from_numpy(reward_batch).to(self.device).unsqueeze(1),
         )
         if reverse_mask:
             mask_batch = mask_batch.logical_not()
@@ -187,10 +192,10 @@ class SAC(object):
             self.alpha_optim.step()
 
             self.alpha = self.log_alpha.exp()
-            alpha_tlogs = self.alpha.clone()  # For TensorboardX logs
+            # alpha_tlogs = self.alpha.clone()  # For TensorboardX logs
         else:
             alpha_loss = torch.tensor(0.0).to(self.device)
-            alpha_tlogs = torch.tensor(self.alpha)  # For TensorboardX logs
+            # alpha_tlogs = torch.tensor(self.alpha)  # For TensorboardX logs
 
         if updates % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
@@ -207,13 +212,13 @@ class SAC(object):
             logger.log("train_alpha/loss", alpha_loss, updates)
             logger.log("train_alpha/value", self.alpha, updates)
 
-        return (
-            qf1_loss.item(),
-            qf2_loss.item(),
-            policy_loss.item(),
-            alpha_loss.item(),
-            alpha_tlogs.item(),
-        )
+        # return (
+        #     qf1_loss.item(),
+        #     qf2_loss.item(),
+        #     policy_loss.item(),
+        #     alpha_loss.item(),
+        #     alpha_tlogs.item(),
+        # )
 
     def adv_update_parameters(
         self,

@@ -43,7 +43,7 @@ import warnings
 MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("epoch", "E", "int"),
     ("rollout_length", "RL", "int"),
-    ("sac_reset_ratio", "SRR", "float"),
+    # ("sac_reset_ratio", "SRR", "float"),
     ("disc_loss", "DL", "float"),
 ]
 
@@ -258,40 +258,6 @@ def train(
         expert_dataset["terminals"][: cfg.overrides.expert_size],
     )
 
-    # --------------- SAC reset ratio schedule -----------------
-    model_reset_schedule = np.array(
-        [
-            [
-                cfg.model_schedule.start_ratio,
-                cfg.model_schedule.mid_ratio,
-                cfg.model_schedule.m1,
-            ],
-            [
-                cfg.model_schedule.mid_ratio,
-                cfg.model_schedule.end_ratio,
-                cfg.model_schedule.m2,
-            ],
-        ]
-    )
-    model_reset_ratio = model_reset_schedule[0, 0]
-    model_ratio_lag = 0
-    sac_reset_schedule = np.array(
-        [
-            [
-                cfg.sac_schedule.start_ratio,
-                cfg.sac_schedule.mid_ratio,
-                cfg.sac_schedule.m1,
-            ],
-            [
-                cfg.sac_schedule.mid_ratio,
-                cfg.sac_schedule.end_ratio,
-                cfg.sac_schedule.m2,
-            ],
-        ]
-    )
-    sac_reset_ratio = sac_reset_schedule[0, 0]
-    sac_ratio_lag = 0
-
     # -------------- discriminator lr schedule ------------------
     disc_lr = cfg.disc.lr
     if cfg.no_regret:
@@ -377,18 +343,15 @@ def train(
                 ) < cfg.overrides.sac_batch_size:
                     break  # only update every once in a while
 
-                agent.sac_agent.bc_reg_update_parameters(
+                agent.sac_agent.update_parameters(
                     sac_buffer,
-                    expert_replay_buffer,
                     cfg.overrides.sac_batch_size,
                     updates_made,
-                    logger,
+                    logger=None,
                     reverse_mask=True,
                 )
                 agent.sac_agent.updates_made += 1
                 agent.sac_agent.step_lr()
-                if not silent and updates_made % cfg.log_frequency_agent == 0:
-                    logger.dump(updates_made, save=True)
             # print(f"Time for agent training: {time.time() - start_time}")
 
             # ------ Discriminator Training ------
@@ -398,7 +361,6 @@ def train(
                 and agent.sac_agent.updates_made != 0
                 and (agent.sac_agent.updates_made) % cfg.disc.freq_train_disc == 0
             ):
-                print("HERE")
                 if not disc_steps == 0:
                     disc_lr = cfg.disc.lr / disc_steps
                 else:
@@ -462,7 +424,6 @@ def train(
                             "env_step": env_steps,
                             "episode_reward": avg_reward,
                             "rollout_length": rollout_length,
-                            "sac_reset_ratio": sac_reset_ratio,
                             "disc_loss": disc_loss,
                         },
                     )
@@ -487,6 +448,5 @@ def train(
                     )
             tbar.update(1)
             env_steps += 1
-            obs = next_obs
 
     return np.float32(best_eval_reward)
