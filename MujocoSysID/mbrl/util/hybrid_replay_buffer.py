@@ -150,11 +150,14 @@ class HybridReplayBuffer(ReplayBuffer):
         def copy_from_to(buffer_start, batch_start, how_many):
             buffer_slice = slice(buffer_start, buffer_start + how_many)
             batch_slice = slice(batch_start, batch_start + how_many)
-            np.copyto(self.observations[buffer_slice], obs[batch_slice])
-            np.copyto(self.actions[buffer_slice], action[batch_slice])
-            np.copyto(self.rewards[buffer_slice], reward[batch_slice])
-            np.copyto(self.next_observations[buffer_slice], next_obs[batch_slice])
-            np.copyto(self.dones[buffer_slice], done[batch_slice])
+            try:
+                np.copyto(self.observations[buffer_slice], obs[batch_slice])
+                np.copyto(self.actions[buffer_slice], action[batch_slice])
+                np.copyto(self.rewards[buffer_slice], reward[batch_slice])
+                np.copyto(self.next_observations[buffer_slice], next_obs[batch_slice])
+                np.copyto(self.dones[buffer_slice], done[batch_slice])
+            except:
+                breakpoint()
 
         _batch_start = 0
         buffer_end = self.pos + len(obs)
