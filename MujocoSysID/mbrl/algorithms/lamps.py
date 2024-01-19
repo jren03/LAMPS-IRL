@@ -55,7 +55,6 @@ def rollout_model_and_populate_sac_buffer(
     sac_samples_action: bool,
     rollout_horizon: int,
     batch_size: int,
-    fixed_reward_value: bool = False,
 ):
     batch = replay_buffer.sample(batch_size)
     initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
@@ -70,22 +69,13 @@ def rollout_model_and_populate_sac_buffer(
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
         )
-        if fixed_reward_value:
-            sac_buffer.add_batch(
-                obs[~accum_dones],
-                action[~accum_dones],
-                pred_next_obs[~accum_dones],
-                np.zeros_like(pred_rewards[~accum_dones, 0]),
-                pred_dones[~accum_dones, 0],
-            )
-        else:
-            sac_buffer.add_batch(
-                obs[~accum_dones],
-                action[~accum_dones],
-                pred_next_obs[~accum_dones],
-                pred_rewards[~accum_dones, 0],
-                pred_dones[~accum_dones, 0],
-            )
+        sac_buffer.add_batch(
+            obs[~accum_dones],
+            action[~accum_dones],
+            pred_next_obs[~accum_dones],
+            pred_rewards[~accum_dones, 0],
+            pred_dones[~accum_dones, 0],
+        )
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
 
@@ -323,10 +313,29 @@ def train(
     # --------------------- Training Loop ---------------------
 
     # --------------- SAC reset ratio schedule -----------------
-    sac_reset_ratio = cfg.sac_schedule.start_ratio
+    model_reset_schedule = np.array(
+        [
+            [
+                cfg.model_schedule.start_ratio,
+                cfg.model_schedule.mid_ratio,
+                cfg.model_schedule.m1,
+            ],
+            [
+                cfg.model_schedule.mid_ratio,
+                cfg.model_schedule.end_ratio,
+                cfg.model_schedule.m2,
+            ],
+        ]
+    )
+    model_reset_ratio = model_reset_schedule[0, 0]
+    model_ratio_lag = 0
     sac_reset_schedule = np.array(
         [
-            [sac_reset_ratio, cfg.sac_schedule.mid_ratio, cfg.sac_schedule.m1],
+            [
+                cfg.sac_schedule.start_ratio,
+                cfg.sac_schedule.mid_ratio,
+                cfg.sac_schedule.m1,
+            ],
             [
                 cfg.sac_schedule.mid_ratio,
                 cfg.sac_schedule.end_ratio,
@@ -334,7 +343,9 @@ def train(
             ],
         ]
     )
+    sac_reset_ratio = sac_reset_schedule[0, 0]
     sac_ratio_lag = 0
+
     if cfg.schedule_sac_ratio:
         print(f"{PrintColors.OKBLUE}Scheduling SAC reset ratio:")
         pp.pprint(sac_reset_schedule)
@@ -403,6 +414,7 @@ def train(
     disc_steps = 0
     sac_buffer = None
 
+    agent.reset_optimizers()
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
@@ -443,7 +455,7 @@ def train(
             ):
                 # ! reset to 50/50 learner/expert states
                 # start_time = time.time()
-                use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
+                # use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
                 model_train_buffer = replay_buffer
                 mbrl.util.common.train_model_and_save_model_and_data(
                     dynamics_model,
@@ -460,22 +472,20 @@ def train(
                 # Batch all rollouts for the next freq_train_model steps together
                 # ! reset to expert states
                 # start_time = time.time()
-                if cfg.schedule_sac_ratio:
-                    (
-                        sac_reset_schedule,
-                        sac_reset_ratio,
-                        sac_ratio_lag,
-                    ) = mbrl.util.math.get_ratio(
-                        sac_reset_schedule, env_steps, sac_ratio_lag
-                    )
-                reset_to_exp_states = rng.random() < sac_reset_ratio
+                (
+                    model_reset_schedule,
+                    model_reset_ratio,
+                    model_ratio_lag,
+                ) = mbrl.util.math.get_ratio(
+                    model_reset_schedule, env_steps, model_ratio_lag
+                )
+                reset_to_exp_states = rng.random() < model_reset_ratio
                 if cfg.use_yuda_default:
                     rollout_buffer = replay_buffer
                 elif reset_to_exp_states:
                     rollout_buffer = expert_replay_buffer
                 else:
                     rollout_buffer = policy_buffer
-
                 rollout_model_and_populate_sac_buffer(
                     model_env,
                     rollout_buffer,
@@ -484,7 +494,6 @@ def train(
                     cfg.algorithm.sac_samples_action,
                     rollout_length,
                     rollout_batch_size,
-                    fixed_reward_value=cfg.disc_binary_reward,
                 )
                 # print(f"Time for rollout: {time.time() - start_time}")
 

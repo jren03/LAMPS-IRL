@@ -29,15 +29,26 @@ agent:
     high: ???
     shape: ???
   args:
-    gamma: ${overrides.sac_gamma}
-    tau: ${overrides.sac_tau}
-    alpha: ${overrides.sac_alpha}
-    policy: ${overrides.sac_policy}
-    target_update_interval: ${overrides.sac_target_update_interval}
-    automatic_entropy_tuning: ${overrides.sac_automatic_entropy_tuning}
-    target_entropy: ${overrides.sac_target_entropy}
-    hidden_size: ${overrides.sac_hidden_size}
+    # override with sb3 defaults
+    gamma: 0.98
+    tau: 0.02
+    alpha: -1
+    policy: "Gaussian"
+    target_update_interval: 1
+    automatic_entropy_tuning: true
+    target_entropy: -1
+    hidden_size: 256
     device: ${device}
-    lr: ${overrides.sac_lr}
-    schedule_lr: ${sac_schedule_lr}
-    torch_compile: ${torch_compile}
+    lr: 7.3e-4
+    # gamma: ${overrides.sac_gamma}
+    # tau: ${overrides.sac_tau}
+    # alpha: ${overrides.sac_alpha}
+    # policy: ${overrides.sac_policy}
+    # target_update_interval: ${overrides.sac_target_update_interval}
+    # automatic_entropy_tuning: ${overrides.sac_automatic_entropy_tuning}
+    # target_entropy: ${overrides.sac_target_entropy}
+    # hidden_size: ${overrides.sac_hidden_size}
+    # device: ${device}
+    # lr: ${overrides.sac_lr}
+    # schedule_lr: ${sac_schedule_lr}
+    # torch_compile: ${torch_compile}

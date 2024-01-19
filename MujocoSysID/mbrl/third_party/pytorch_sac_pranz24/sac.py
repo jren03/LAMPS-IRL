@@ -12,6 +12,7 @@ from mbrl.third_party.pytorch_sac_pranz24.model import (
 from mbrl.third_party.pytorch_sac_pranz24.utils import hard_update, soft_update
 
 from mbrl.util.common import PrintColors as PC
+from mbrl.util.oadam import OAdam
 
 
 class SAC(object):
@@ -30,7 +31,7 @@ class SAC(object):
         self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(
             device=self.device
         )
-        self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
+        self.critic_optim = OAdam(self.critic.parameters(), lr=args.lr)
 
         self.critic_target = QNetwork(
             num_inputs, action_space.shape[0], args.hidden_size
@@ -40,7 +41,7 @@ class SAC(object):
         if self.policy_type == "Gaussian":
             # Target Entropy = −dim(A) (e.g. , -6 for HalfCheetah-v2) as given in the paper
             if self.automatic_entropy_tuning is True:
-                if args.target_entropy is None:
+                if self.args.target_entropy is None or self.args.target_entropy == -1:
                     self.target_entropy = -torch.prod(
                         torch.Tensor(action_space.shape).to(self.device)
                     ).item()
@@ -52,7 +53,7 @@ class SAC(object):
             self.policy = GaussianPolicy(
                 num_inputs, action_space.shape[0], args.hidden_size, action_space
             ).to(self.device)
-            self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
+            self.policy_optim = OAdam(self.policy.parameters(), lr=args.lr)
 
         else:
             self.alpha = 0
@@ -64,14 +65,7 @@ class SAC(object):
 
         self.f_net = None
         self.relabel_samples = relabel_samples
-
-        if args.torch_compile:
-            self._compile_networks()
-
-    def _compile_networks(self):
-        self.critic = torch.compile(self.critic)
-        self.critic_target = torch.compile(self.critic_target)
-        self.policy = torch.compile(self.policy)
+        self.updates_made = 0
 
     def add_f_net(self, f_net):
         self.f_net = f_net
@@ -87,6 +81,18 @@ class SAC(object):
                 + "WARNING: SAC is NOT relabeling samples with f_net. This is standard SAC."
                 + PC.ENDC
             )
+
+    def reset_optimizers(self):
+        self.critic_optim = OAdam(self.critic.parameters(), lr=self.args.lr)
+        self.policy_optim = OAdam(self.policy.parameters(), lr=self.args.lr)
+        self.alpha_optim = Adam([self.log_alpha], lr=self.args.lr)
+        self.updates_made = 0
+
+    def step_lr(self):
+        optimizers = [self.critic_optim, self.policy_optim, self.alpha_optim]
+        for optim in optimizers:
+            for param_group in optim.param_groups:
+                param_group["lr"] /= max(self.updates_made, 1)
 
     def select_action(self, state, batched=False, evaluate=False):
         state = torch.FloatTensor(state)

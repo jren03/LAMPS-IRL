@@ -32,8 +32,8 @@ sac_tau: 0.005
 sac_alpha: 0.2
 sac_policy: "Gaussian"
 sac_target_update_interval: 4
-sac_automatic_entropy_tuning: false
-sac_target_entropy: 1 # ignored, since entropy tuning is false
+sac_automatic_entropy_tuning: true
+sac_target_entropy: -1 # ignored, since entropy tuning is false
 sac_hidden_size: 512
-sac_lr: 0.0003
+sac_lr: 7.3e-4
 sac_batch_size: 256
