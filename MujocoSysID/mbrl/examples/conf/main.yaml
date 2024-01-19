@@ -33,6 +33,7 @@ sac_schedule:
 eval_frequency: 10000
 
 sac_in_real: false
+schedule_actor: false
 
 silent: true
 from_end: false

@@ -403,7 +403,8 @@ def train(
     disc_steps = 0
     sac_buffer = None
 
-    agent.sac_agent.reset_optimizers()
+    if cfg.schedule_actor:
+        agent.sac_agent.reset_optimizers()
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
@@ -536,7 +537,8 @@ def train(
                         )
 
                 agent.sac_agent.updates_made += 1
-            agent.sac_agent.step_lr()
+            if cfg.schedule_actor:
+                agent.sac_agent.step_lr()
             # print(f"Time for agent training: {time.time() - start_time}")
 
             # ------ Discriminator Training ------
@@ -586,7 +588,8 @@ def train(
                     if cfg.disc.ema:
                         ema.update()
                 disc_steps += 1
-                agent.sac_agent.reset_optimizers()
+                if cfg.schedule_actor:
+                    agent.sac_agent.reset_optimizers()
                 # print(f"REEE 2: {updates_made}")
 
             # ------ Epoch ended (evaluate and save model) ------

@@ -22,15 +22,8 @@ import mbrl.util.env
 def run(cfg: omegaconf.DictConfig):
     print(f"{PrintColors.BOLD}Config:")
     cfgs = {
-        "use_yuda_default": cfg.use_yuda_default,
-        "add_exp_to_replay_buffer": cfg.add_exp_to_replay_buffer,
-        "use_policy_buffer_adv_update": cfg.use_policy_buffer_adv_update,
-        "model_exp_ratio": cfg.overrides.model_exp_ratio,
-        "policy_exp_ratio": cfg.overrides.policy_exp_ratio,
-        "use_mbrl_demos": cfg.use_mbrl_demos,
         "disc_ensemble": cfg.disc_ensemble,
-        "disc_binary_reward": cfg.disc_binary_reward,
-        "sac_schedule_lr": cfg.sac_schedule_lr,
+        "schedule_actor": cfg.schedule_actor,
     }
     for k, v in cfgs.items():
         if v != 0.0 and v is not False:

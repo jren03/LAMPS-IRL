@@ -42,7 +42,7 @@ def main(env_name, override, partition, date):
                 )
                 continue
 
-            if len(df) < target_entries - 20 or len(df) < 8:
+            if len(df) < target_entries - 20 or len(df) < 6:
                 print(
                     f"{PrintColors.FAIL}Skipping {results_file} because it has {len(df)} entries{PrintColors.ENDC}"
                 )
