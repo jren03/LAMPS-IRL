@@ -535,7 +535,7 @@ def train(
                             reverse_mask=True,
                         )
 
-            agent.sac_agent.updates_made += cfg.overrides.num_sac_updates_per_step
+                agent.sac_agent.updates_made += 1
             agent.sac_agent.step_lr()
             # print(f"Time for agent training: {time.time() - start_time}")
 
@@ -586,7 +586,6 @@ def train(
                     if cfg.disc.ema:
                         ema.update()
                 disc_steps += 1
-                print("Updated discriminator")
                 agent.sac_agent.reset_optimizers()
                 # print(f"REEE 2: {updates_made}")
 

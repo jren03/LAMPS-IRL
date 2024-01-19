@@ -88,20 +88,18 @@ class SAC(object):
     def reset_optimizers(self):
         self.critic_optim = Adam(self.critic.parameters(), lr=self.args.lr)
         self.policy_optim = Adam(self.policy.parameters(), lr=self.args.lr)
-        self.alpha_optim = Adam([self.log_alpha], lr=self.args.lr)
+        # self.alpha_optim = Adam([self.log_alpha], lr=self.args.lr)
         self.get_schedule_fn = linear_schedule(self.args.lr)
         self.updates_made = 0
 
     def step_lr(self):
-        optimizers = [self.critic_optim, self.policy_optim, self.alpha_optim]
+        optimizers = [self.critic_optim, self.policy_optim]
         for optim in optimizers:
             for param_group in optim.param_groups:
                 progress_remaining = max(
                     1 - self.updates_made / self.total_timesteps, 1e-8
                 )
                 param_group["lr"] = self.get_schedule_fn(progress_remaining)
-                print(param_group["lr"], end="\t")
-        print()
 
     def select_action(self, state, batched=False, evaluate=False):
         state = torch.FloatTensor(state)
