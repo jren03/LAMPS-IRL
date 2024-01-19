@@ -204,7 +204,7 @@ class SAC(object):
             alpha_loss = torch.tensor(0.0).to(self.device)
             # alpha_tlogs = torch.tensor(self.alpha)  # For TensorboardX logs
 
-        if updates % self.target_update_interval == 0:
+        if self.updates_made % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
 
         # if logger is not None:
@@ -331,7 +331,7 @@ class SAC(object):
             alpha_loss = torch.tensor(0.0).to(self.device)
             # alpha_tlogs = torch.tensor(self.alpha)  # For TensorboardX logs
 
-        if updates % self.target_update_interval == 0:
+        if self.updates_made % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
 
         # if logger is not None:
