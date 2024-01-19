@@ -39,7 +39,7 @@ adversarial_reward_loss: false
 use_gp: false
 scale_adv_loss: false
 
-sac_bc_reg: false
+sac_bc_reg: true
 
 experiment: default
 seed: 1
