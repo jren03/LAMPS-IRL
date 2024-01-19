@@ -15,6 +15,7 @@ from mbrl.third_party.pytorch_sac_pranz24.utils import (
     linear_schedule,
 )
 
+from mbrl.util.oadam import OAdam
 from mbrl.util.common import PrintColors as PC
 
 
@@ -90,8 +91,8 @@ class SAC(object):
             )
 
     def reset_optimizers(self):
-        self.critic_optim = Adam(self.critic.parameters(), lr=self.args.lr)
-        self.policy_optim = Adam(self.policy.parameters(), lr=self.args.lr)
+        self.critic_optim = OAdam(self.critic.parameters(), lr=self.args.lr)
+        self.policy_optim = OAdam(self.policy.parameters(), lr=self.args.lr)
         # self.alpha_optim = Adam([self.log_alpha], lr=self.args.lr)
         self.get_schedule_fn = linear_schedule(self.args.lr)
         self.updates_made = 0

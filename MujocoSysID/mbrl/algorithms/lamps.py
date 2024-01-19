@@ -28,11 +28,11 @@ from mbrl.models.discriminator import Discriminator, DiscriminatorEnsemble
 from mbrl.util.oadam import OAdam
 from mbrl.util.common import gradient_penalty, PrintColors
 from mbrl.util.discriminator_replay_buffer import DiscriminatorReplayBuffer
-from ema_pytorch import EMA
 
 import d4rl
 from tqdm import tqdm
 from ema_pytorch import EMA
+from torch.optim import Adam
 
 import stable_baselines3 as sb3
 from pathlib import Path
@@ -371,6 +371,7 @@ def train(
             )
             f_net = Discriminator(env).to(cfg.device)
         f_opt = OAdam(f_net.parameters(), lr=disc_lr)
+        # f_opt = Adam(f_net.parameters(), lr=disc_lr)
         if cfg.disc.ema:
             print(PrintColors.OKBLUE + "Using EMA for discriminator" + PrintColors.ENDC)
             ema = EMA(
@@ -404,6 +405,7 @@ def train(
     sac_buffer = None
 
     if cfg.schedule_actor:
+        # automatically loads OAdam optimizer
         agent.sac_agent.reset_optimizers()
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
@@ -553,6 +555,7 @@ def train(
                 else:
                     disc_lr = cfg.disc.lr
                 f_opt = OAdam(f_net.parameters(), lr=disc_lr)
+                # f_opt = Adam(f_net.parameters(), lr=disc_lr)
 
                 S_curr, A_curr, s = sample(
                     test_env,

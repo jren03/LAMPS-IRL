@@ -26,8 +26,7 @@ def run(cfg: omegaconf.DictConfig):
         "schedule_actor": cfg.schedule_actor,
     }
     for k, v in cfgs.items():
-        if v != 0.0 and v is not False:
-            print(f"{k}: {v}")
+        print(f"{k}: {v}")
         if k == "disc_ensemble" and v:
             print(f"disc_ensemble_reduction: {cfg.disc_ensemble_reduction}")
     if cfg.train_discriminator and not cfg.update_with_model:
