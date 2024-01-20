@@ -404,6 +404,7 @@ def train(
     best_eval_reward = -np.inf
     epoch = 0
     disc_steps = 0
+    disc_loss = 0.0
     sac_buffer = None
 
     if cfg.schedule_actor:
@@ -650,4 +651,4 @@ def train(
             env_steps += 1
             obs = next_obs
 
-    return np.float32(best_eval_
+    return np.float32(best_eval_reward)
