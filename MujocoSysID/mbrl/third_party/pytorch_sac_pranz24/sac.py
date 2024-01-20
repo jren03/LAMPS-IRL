@@ -74,6 +74,7 @@ class SAC(object):
         self.updates_made = 0
         self.relabel_samples = relabel_samples
         self.total_timesteps = args.total_timesteps
+        print(PC.BOLD + f"SAC initialized with {self.total_timesteps=}" + PC.ENDC)
 
     def add_f_net(self, f_net):
         self.f_net = f_net
@@ -91,8 +92,8 @@ class SAC(object):
             )
 
     def reset_optimizers(self):
-        self.critic_optim = OAdam(self.critic.parameters(), lr=self.args.lr)
-        self.policy_optim = OAdam(self.policy.parameters(), lr=self.args.lr)
+        self.critic_optim = Adam(self.critic.parameters(), lr=self.args.lr)
+        self.policy_optim = Adam(self.policy.parameters(), lr=self.args.lr)
         # self.alpha_optim = Adam([self.log_alpha], lr=self.args.lr)
         self.get_schedule_fn = linear_schedule(self.args.lr)
         self.updates_made = 0

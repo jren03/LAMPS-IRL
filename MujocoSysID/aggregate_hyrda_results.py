@@ -13,7 +13,7 @@ def is_non_zero_file(fpath):
 
 def main(env_name, override, partition, date):
     algs = ["lamps", "sysid", "mbpo"]
-    target_entries = 20
+    target_entries = 15
 
     for alg in algs:
         base_dir = Path("exp", alg, partition, env_name)

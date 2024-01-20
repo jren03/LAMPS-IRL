@@ -48,6 +48,7 @@ update_with_model: false
 n_discs: 7
 disc:
   lr: 8e-4
+  oadam: false
   ema: false
   batch_size: 4096
   freq_train_disc: 2000

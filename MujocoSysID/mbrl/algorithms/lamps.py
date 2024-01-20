@@ -370,8 +370,10 @@ def train(
                 f"{PrintColors.OKBLUE}Training with discriminator function REGULAR{PrintColors.ENDC}"
             )
             f_net = Discriminator(env).to(cfg.device)
-        f_opt = OAdam(f_net.parameters(), lr=disc_lr)
-        # f_opt = Adam(f_net.parameters(), lr=disc_lr)
+        if cfg.disc.oadam:
+            f_opt = OAdam(f_net.parameters(), lr=disc_lr)
+        else:
+            f_opt = Adam(f_net.parameters(), lr=disc_lr)
         if cfg.disc.ema:
             print(PrintColors.OKBLUE + "Using EMA for discriminator" + PrintColors.ENDC)
             ema = EMA(
@@ -554,8 +556,10 @@ def train(
                     disc_lr = cfg.disc.lr / disc_steps
                 else:
                     disc_lr = cfg.disc.lr
-                f_opt = OAdam(f_net.parameters(), lr=disc_lr)
-                # f_opt = Adam(f_net.parameters(), lr=disc_lr)
+                if cfg.disc.oadam:
+                    f_opt = OAdam(f_net.parameters(), lr=disc_lr)
+                else:
+                    f_opt = Adam(f_net.parameters(), lr=disc_lr)
 
                 S_curr, A_curr, s = sample(
                     test_env,
@@ -592,7 +596,11 @@ def train(
                         ema.update()
                 disc_steps += 1
                 if cfg.schedule_actor:
+                    # for param in agent.sac_agent.policy_optim.param_groups:
+                    #     print(param["lr"], end="\t")
                     agent.sac_agent.reset_optimizers()
+                    # for param in agent.sac_agent.policy_optim.param_groups:
+                    #     print(param["lr"], end="\n")
                 # print(f"REEE 2: {updates_made}")
 
             # ------ Epoch ended (evaluate and save model) ------
@@ -642,4 +650,4 @@ def train(
             env_steps += 1
             obs = next_obs
 
-    return np.float32(best_eval_reward)
+    return np.float32(best_eval_

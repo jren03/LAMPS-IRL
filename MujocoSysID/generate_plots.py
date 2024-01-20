@@ -90,7 +90,7 @@ def main(env_abbrv, env_name):
     # steps = 100
     # sz = 1000
 
-    steps = 7
+    steps = 10
     sz = 10_000
     for alg in algs_to_colors.keys():
         if alg == "exp":
