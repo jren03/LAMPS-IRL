@@ -50,7 +50,7 @@ def calc_iqm(data):
     return iqm_scores
 
 
-def main(env_abbrv, env_name):
+def main(env_abbrv, env_name, steps=15):
     csv_results_dir = Path("csv_results", env_name)
     algs_to_colors = {
         "exp": "green",
@@ -90,7 +90,7 @@ def main(env_abbrv, env_name):
     # steps = 100
     # sz = 1000
 
-    steps = 10
+    # steps = 10
     sz = 10_000
     for alg in algs_to_colors.keys():
         if alg == "exp":
@@ -163,6 +163,7 @@ if __name__ == "__main__":
         choices=["ant", "hc", "hop", "hum", "walk"],
         help="Name of the environment",
     )
+    parser.add_argument("-s", "--steps", type=int, help="Number of steps", default=15)
     args = parser.parse_args()
 
     env_abbr = args.env_name
@@ -178,4 +179,4 @@ if __name__ == "__main__":
         env_name = "Walker2d-v3"
     if "truncated" not in env_name:
         env_name = f"gym___{env_name}"
-    main(env_abbr, env_name)
+    main(env_abbr, env_name, steps=args.steps)
