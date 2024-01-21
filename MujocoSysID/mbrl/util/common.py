@@ -109,6 +109,7 @@ def create_one_dim_tr_model(
 
     return dynamics_model
 
+
 def create_one_dim_tr_model_value(
     cfg: omegaconf.DictConfig,
     obs_shape: Tuple[int, ...],
@@ -194,6 +195,7 @@ def create_one_dim_tr_model_value(
         dynamics_model.load(model_dir)
 
     return dynamics_model
+
 
 def load_hydra_cfg(results_dir: Union[str, pathlib.Path]) -> omegaconf.DictConfig:
     """Loads a Hydra configuration from the given directory path.
@@ -497,12 +499,13 @@ def train_model_and_save_model_and_data(
         model.save(str(work_dir))
         replay_buffer.save(work_dir)
 
+
 def value_train_model_and_save_model_and_data(
     model: mbrl.models.Model,
     model_trainer: mbrl.models.ModelTrainer,
     cfg: omegaconf.DictConfig,
     replay_buffer: ReplayBuffer,
-    agent, 
+    agent,
     work_dir: Optional[Union[str, pathlib.Path]] = None,
     callback: Optional[Callable] = None,
 ):
@@ -551,7 +554,6 @@ def value_train_model_and_save_model_and_data(
     if work_dir is not None:
         model.save(str(work_dir))
         replay_buffer.save(work_dir)
-
 
 
 def rollout_model_env(
