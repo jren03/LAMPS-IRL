@@ -377,7 +377,7 @@ def train(
                     logger.dump(updates_made, save=True)
 
             # ------ Epoch ended (evaluate and save model) ------
-            if (env_steps + 1) % cfg.overrides.epoch_length == 0:
+            if (env_steps + 1) % (10 * cfg.overrides.epoch_length) == 0:
                 if not is_maze:
                     avg_reward = evaluate(
                         test_env,
