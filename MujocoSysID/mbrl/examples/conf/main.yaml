@@ -33,6 +33,7 @@ sac_schedule:
 
 eval_frequency: 10000
 
+optim_oadam: false
 sac_in_real: false
 schedule_actor: false
 
@@ -49,7 +50,6 @@ update_with_model: false
 n_discs: 7
 disc:
   lr: 8e-4
-  oadam: false
   ema: false
   batch_size: 4096
   freq_train_disc: 2000

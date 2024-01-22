@@ -24,6 +24,7 @@ def run(cfg: omegaconf.DictConfig):
     cfgs = {
         "disc_ensemble": cfg.disc_ensemble,
         "schedule_actor": cfg.schedule_actor,
+        "optim_oadam": cfg.optim_oadam,
     }
     for k, v in cfgs.items():
         print(f"{k}: {v}")
@@ -34,7 +35,6 @@ def run(cfg: omegaconf.DictConfig):
         print(f"disc_lr: {cfg.disc.lr:.2E}")
         print(f"n_discs: {cfg.n_discs}")
         print(f"use ema: {cfg.disc.ema}")
-        print(f"oadam: {cfg.disc.oadam}")
         # make sure discriminator can be updated approrpriately
         assert cfg.disc.freq_train_disc % cfg.overrides.num_sac_updates_per_step == 0
 

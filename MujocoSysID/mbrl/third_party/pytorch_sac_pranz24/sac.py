@@ -91,9 +91,13 @@ class SAC(object):
                 + PC.ENDC
             )
 
-    def reset_optimizers(self):
-        self.critic_optim = Adam(self.critic.parameters(), lr=self.args.lr)
-        self.policy_optim = Adam(self.policy.parameters(), lr=self.args.lr)
+    def reset_optimizers(self, optim_oadam=False):
+        if optim_oadam:
+            self.critic_optim = OAdam(self.critic.parameters(), lr=self.args.lr)
+            self.policy_optim = OAdam(self.policy.parameters(), lr=self.args.lr)
+        else:
+            self.critic_optim = Adam(self.critic.parameters(), lr=self.args.lr)
+            self.policy_optim = Adam(self.policy.parameters(), lr=self.args.lr)
         # self.alpha_optim = Adam([self.log_alpha], lr=self.args.lr)
         self.get_schedule_fn = linear_schedule(self.args.lr)
         self.updates_made = 0

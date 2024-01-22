@@ -378,7 +378,7 @@ def train(
                 f"{PrintColors.OKBLUE}Training with discriminator function REGULAR{PrintColors.ENDC}"
             )
             f_net = Discriminator(env).to(cfg.device)
-        if cfg.disc.oadam:
+        if cfg.optim_oadam:
             f_opt = OAdam(f_net.parameters(), lr=disc_lr)
         else:
             f_opt = Adam(f_net.parameters(), lr=disc_lr)
@@ -415,9 +415,7 @@ def train(
     disc_loss = 0.0
     sac_buffer = None
 
-    if cfg.schedule_actor:
-        # automatically loads OAdam optimizer
-        agent.sac_agent.reset_optimizers()
+    agent.sac_agent.reset_optimizers(cfg.optim_oadam)
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
         rollout_length = int(
@@ -564,7 +562,7 @@ def train(
                     disc_lr = cfg.disc.lr / disc_steps
                 else:
                     disc_lr = cfg.disc.lr
-                if cfg.disc.oadam:
+                if cfg.optim_oadam:
                     f_opt = OAdam(f_net.parameters(), lr=disc_lr)
                 else:
                     f_opt = Adam(f_net.parameters(), lr=disc_lr)
@@ -606,7 +604,7 @@ def train(
                 if cfg.schedule_actor:
                     # for param in agent.sac_agent.policy_optim.param_groups:
                     #     print(param["lr"], end="\t")
-                    agent.sac_agent.reset_optimizers()
+                    agent.sac_agent.reset_optimizers(cfg.optim_oadam)
                     # for param in agent.sac_agent.policy_optim.param_groups:
                     #     print(param["lr"], end="\n")
                 # print(f"REEE 2: {updates_made}")
