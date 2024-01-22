@@ -12,7 +12,7 @@ expert_dir: ${overrides.expert_dir}
 sac_samples_action: true
 initial_exploration_steps: 1000
 expert_steps: 100000
-random_initial_explore: true
+random_initial_explore: false
 # num_eval_episodes: 2
 num_eval_episodes: 5
 

@@ -70,22 +70,13 @@ def rollout_model_and_populate_sac_buffer(
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
         )
-        if fixed_reward_value:
-            sac_buffer.add_batch(
-                obs[~accum_dones],
-                action[~accum_dones],
-                pred_next_obs[~accum_dones],
-                np.zeros_like(pred_rewards[~accum_dones, 0]),
-                pred_dones[~accum_dones, 0],
-            )
-        else:
-            sac_buffer.add_batch(
-                obs[~accum_dones],
-                action[~accum_dones],
-                pred_next_obs[~accum_dones],
-                pred_rewards[~accum_dones, 0],
-                pred_dones[~accum_dones, 0],
-            )
+        sac_buffer.add_batch(
+            obs[~accum_dones],
+            action[~accum_dones],
+            pred_next_obs[~accum_dones],
+            pred_rewards[~accum_dones, 0],
+            pred_dones[~accum_dones, 0],
+        )
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
 
@@ -220,23 +211,8 @@ def train(
         cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
     )
 
-    if cfg.train_disc_in_model:
-        # load in SB3 model used to collect data
-        expert_base_path = Path(
-            "/share/portal/jlr429/pessimistic-irl/fast_irl/experts/"
-        )
-        env_name = cfg.overrides.env.lower()
-        if "humanoid" in env_name:
-            env_name = "Humanoid-v3"
-        elif "ant" in env_name and "truncated" in env_name:
-            env_name = "Ant-v3"
-        else:
-            env_name = env_name.replace("gym___", "")
-        expert_path = Path(expert_base_path, f"{env_name}/expert")
-        expert_sb3_agent = sb3.SAC.load(str(expert_path))
-        print(f"{PrintColors.BOLD}Loading expert agent from {expert_path}")
-
     is_maze = "maze" in cfg.overrides.env
+
     expert_dataset = fetch_demos(
         cfg.overrides.env,
         zero_out_rewards=cfg.train_discriminator,
@@ -304,20 +280,52 @@ def train(
         reward_type=dtype,
         fixed_reward_value=1.0 if cfg.disc_binary_reward else None,
     )
-    replay_buffer.add_batch(
-        expert_dataset["observations"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["actions"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["next_observations"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["rewards"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
-    )
-    expert_replay_buffer.add_batch(
-        expert_dataset["observations"][: cfg.overrides.expert_size],
-        expert_dataset["actions"][: cfg.overrides.expert_size],
-        expert_dataset["next_observations"][: cfg.overrides.expert_size],
-        expert_dataset["rewards"][: cfg.overrides.expert_size],
-        expert_dataset["terminals"][: cfg.overrides.expert_size],
-    )
+    if cfg.use_original_datacollect:
+        expert = SACAgent(
+            cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
+        )
+        expert.sac_agent.load_checkpoint(
+            ckpt_path=os.path.join(
+                "/share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/expert/",
+                cfg.overrides.env.replace("gym___", ""),
+                "sac.pth",
+            ),
+            evaluate=True,
+        )
+        expert_rewards = mbrl.util.common.rollout_agent_trajectories(
+            env,
+            1000,
+            expert,
+            {"sample": True, "batched": False},
+            replay_buffer=replay_buffer,
+            additional_buffer=expert_replay_buffer,
+        )
+        print(np.mean(expert_rewards))
+        expert_rewards = mbrl.util.common.rollout_agent_trajectories(
+            env,
+            cfg.overrides.expert_size,
+            expert,
+            {"sample": True, "batched": False},
+            replay_buffer=expert_replay_buffer,
+            additional_buffer=None,
+        )
+    else:
+        replay_buffer.add_batch(
+            expert_dataset["observations"][: cfg.algorithm.initial_exploration_steps],
+            expert_dataset["actions"][: cfg.algorithm.initial_exploration_steps],
+            expert_dataset["next_observations"][
+                : cfg.algorithm.initial_exploration_steps
+            ],
+            expert_dataset["rewards"][: cfg.algorithm.initial_exploration_steps],
+            expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
+        )
+        expert_replay_buffer.add_batch(
+            expert_dataset["observations"][: cfg.overrides.expert_size],
+            expert_dataset["actions"][: cfg.overrides.expert_size],
+            expert_dataset["next_observations"][: cfg.overrides.expert_size],
+            expert_dataset["rewards"][: cfg.overrides.expert_size],
+            expert_dataset["terminals"][: cfg.overrides.expert_size],
+        )
 
     # ---------------------------------------------------------
     # --------------------- Training Loop ---------------------
@@ -491,7 +499,6 @@ def train(
                     cfg.algorithm.sac_samples_action,
                     rollout_length,
                     rollout_batch_size,
-                    fixed_reward_value=cfg.disc_binary_reward,
                 )
                 # print(f"Time for rollout: {time.time() - start_time}")
 

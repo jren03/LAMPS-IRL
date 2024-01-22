@@ -14,6 +14,7 @@ add_exp_to_replay_buffer: false
 use_policy_buffer_adv_update: false
 
 use_mbrl_demos: false
+use_original_datacollect: false
 train_disc_in_model: false
 
 disc_ensemble: true
