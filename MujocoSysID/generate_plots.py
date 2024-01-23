@@ -149,7 +149,8 @@ def main(env_abbrv, env_name, steps=15):
     plt.ylabel("IQM of $J(\\pi)$")
     plt.xlabel("Env. Steps")
     plt.xticks(rotation=45)
-    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble))
+    # plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble))
+    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(0))
     plt.savefig(f"plots/{env_name}.png", bbox_inches="tight")
     print("SAVED")
 
