@@ -39,4 +39,4 @@ agent:
     hidden_size: ${overrides.sac_hidden_size}
     device: ${device}
     lr: ${overrides.sac_lr}
-    total_timesteps: ${disc.freq_train_disc}
+    total_timesteps: ${sac_decay_timesteps}
