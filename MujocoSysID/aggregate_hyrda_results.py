@@ -63,8 +63,6 @@ def main(env_name, override, partition, date):
                     hydra_yml = yaml.safe_load(stream)
                     seed = hydra_yml.get("seed")
                     shaky = hydra_yml.get("shaky")
-                    if shaky:
-                        continue
                 except yaml.YAMLError as exc:
                     print(exc)
 
