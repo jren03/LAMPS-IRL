@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import tqdm
-from oadam import OAdam
+from mbrl.util.oadam import OAdam
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -107,12 +107,12 @@ class TD3_BC(object):
 
     def learn(self, total_timesteps, log_interval=1000, bc=False):
         if bc:
-            for _ in tqdm.tqdm(range(total_timesteps)):
+            for _ in tqdm.tqdm(range(total_timesteps), leave=False, ncols=0):
                 self.step(bc=bc)
         else:
             obs = self.env.reset()
             done = False
-            for _ in tqdm.tqdm(range(total_timesteps)):
+            for _ in tqdm.tqdm(range(total_timesteps), leave=False, ncols=0):
                 act = self.predict(obs)[0]
                 next_obs, rew, done, _ = self.env.step(act)
                 self.pi_replay_buffer.add(obs, act, next_obs, rew.cpu().detach(), done)

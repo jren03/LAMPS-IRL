@@ -33,11 +33,10 @@ from mbrl.env.gym_wrappers import (
     AntMazeResetWrapper,
     GoalWrapper,
     RewardWrapper,
-    ResetWrapper,
     TremblingHandWrapper,
 )
 from mbrl.util.fetch_demos import fetch_demos
-from mbrl.am_buffers import ReplayBuffer, QReplayBuffer
+from mbrl.util.am_buffers import QReplayBuffer
 from mbrl.models.arch import Discriminator
 from mbrl.models.td3_bc import TD3_BC
 from mbrl.util.oadam import OAdam
@@ -45,7 +44,7 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from mbrl.util.nn_utils import gradient_penalty
 
 
-def sample(self, env, policy, trajs, no_regret):
+def sample(env, policy, trajs, no_regret):
     # rollout trajectories using a policy and add to replay buffer
     S_curr = []
     A_curr = []
@@ -66,9 +65,7 @@ def sample(self, env, policy, trajs, no_regret):
                 total_trajs += 1
                 break
     env.alpha = alpha
-    if no_regret:
-        self.replay_buffer.add(S_curr, A_curr)
-    return torch.Tensor(S_curr), torch.Tensor(A_curr), s
+    return torch.from_numpy(np.array(S_curr)), torch.from_numpy(np.array(A_curr)), s
 
 
 def train(
@@ -85,16 +82,17 @@ def train(
     f_steps = 1
     pi_steps = 5000
     num_traj_sample = 4
-    outer_steps = 0
+    outer_steps = 100
     mean_rewards = []
     std_rewards = []
     env_steps = []
     log_interval = 5
 
-    env_name = cfg.overrides.env_name.lower().replace("gym___", "")
+    env_name = cfg.overrides.env.lower().replace("gym___", "")
     cur_env = gym.make(env_name)
 
     expert_dataset, expert_sa_pairs, qpos, qvel, goals = fetch_demos(env_name)
+    expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
     if "maze" in env_name:
         cur_env = AntMazeResetWrapper(GoalWrapper(cur_env), qpos, qvel, goals)
@@ -144,6 +142,7 @@ def train(
     pi.critic.optimizer = OAdam(pi.critic.parameters())
 
     steps = 0
+    print(f"Training {env_name}")
     for outer in range(outer_steps):
         if not outer == 0:
             learning_rate_used = learn_rate / outer

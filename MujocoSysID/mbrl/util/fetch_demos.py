@@ -14,7 +14,7 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
     if "maze" in env_name:
         env = gym.make(env_name)
         dataset = env.get_dataset()
-        q_dataset = d4rl.qlearning_dataset(env_name)
+        q_dataset = d4rl.qlearning_dataset(env)
 
         curr_obs_pt = 0
         curr_obs_indices = []

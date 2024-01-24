@@ -4,6 +4,7 @@ import gym
 import torch
 import numpy as np
 from mbrl.util.common import PrintColors, HiddenPrints
+from termcolor import cprint
 
 
 def _get_env_name(env):
@@ -45,6 +46,7 @@ class TremblingHandWrapper(gym.Wrapper):
         super().__init__(env)
         self.env = env
         self.p_tremble = p_tremble
+        cprint(f"{self.p_tremble=}", attrs=["bold"])
 
     def reset(self):
         return self.env.reset()
@@ -93,10 +95,12 @@ class AntMazeResetWrapper(gym.Wrapper):
         self.G = G
         self.t = 0
         self.T = 700
+        self.rng = np.random.default_rng()
+        cprint(f"AntMazeResetWrapper: {self.alpha=}", attrs=["bold"])
 
     def reset(self):
         obs = self.env.reset()
-        if np.random.uniform() < self.alpha:
+        if self.rng.random() < self.alpha:
             idx = np.random.choice(len(self.qpos))
             t = np.random.choice(len(self.qpos[idx]))
             with HiddenPrints():
