@@ -111,13 +111,16 @@ class TD3_BC(object):
         # for mbrl: do nothing
         return
 
-    def act(self, obs, **kwarg):
+    def act(self, obs, batched=False, **kwargs):
         # wrapper to handle mbrl calls
-        return self.predict(obs)[0]
+        return self.predict(obs, batched=batched)[0]
 
-    def predict(self, obs, state=None, deterministic=True):
-        obs = torch.FloatTensor(obs.reshape(1, -1)).to(device)
-        return self.actor(obs).cpu().data.numpy().flatten(), None
+    def predict(self, obs, state=None, deterministic=True, batched=False):
+        obs = torch.FloatTensor(obs).to(device)
+        if batched:
+            return self.actor(obs).cpu().data.numpy(), None
+        else:
+            return self.actor(obs.unsqueeze(0)).cpu().data.numpy().flatten(), None
 
     def learn(self, total_timesteps, log_interval=1000, bc=False):
         if bc:

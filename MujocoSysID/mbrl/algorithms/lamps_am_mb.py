@@ -69,6 +69,61 @@ def sample(env, policy, trajs, no_regret):
     return torch.from_numpy(np.array(S_curr)), torch.from_numpy(np.array(A_curr)), s
 
 
+def maybe_replace_sac_buffer(
+    sac_buffer: Optional[mbrl.util.ReplayBuffer],
+    obs_shape: Sequence[int],
+    act_shape: Sequence[int],
+    new_capacity: int,
+    seed: int,
+) -> mbrl.util.ReplayBuffer:
+    if sac_buffer is None or new_capacity != sac_buffer.capacity:
+        if sac_buffer is None:
+            rng = np.random.default_rng(seed=seed)
+        else:
+            rng = sac_buffer.rng
+        new_buffer = mbrl.util.ReplayBuffer(new_capacity, obs_shape, act_shape, rng=rng)
+        if sac_buffer is None:
+            return new_buffer
+        obs, action, next_obs, reward, done = sac_buffer.get_all().astuple()
+        new_buffer.add_batch(obs, action, next_obs, reward, done)
+        return new_buffer
+    return sac_buffer
+
+
+def rollout_model_and_populate_sac_buffer(
+    model_env: mbrl.models.ModelEnv,
+    replay_buffer: mbrl.util.ReplayBuffer,
+    agent: SACAgent,
+    sac_buffer: mbrl.util.ReplayBuffer,
+    sac_samples_action: bool,
+    rollout_horizon: int,
+    batch_size: int,
+):
+    batch = replay_buffer.sample(batch_size)
+    initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
+    model_state = model_env.reset(
+        initial_obs_batch=cast(np.ndarray, initial_obs),
+        return_as_np=True,
+    )
+    accum_dones = np.zeros(initial_obs.shape[0], dtype=bool)
+    obs = initial_obs
+    for i in range(rollout_horizon):
+        action = agent.act(obs, sample=sac_samples_action, batched=True)
+        breakpoint()
+        pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
+            action, model_state, sample=True
+        )
+        sac_buffer.add_batch(
+            obs[~accum_dones],
+            action[~accum_dones],
+            pred_next_obs[~accum_dones],
+            pred_rewards[~accum_dones, 0],
+            pred_dones[~accum_dones, 0],
+        )
+        obs = pred_next_obs
+        accum_dones |= pred_dones.squeeze()
+
+
 def train(
     env: gym.Env,
     test_env: gym.Env,
@@ -131,10 +186,10 @@ def train(
         "f": f_net,
     }
     agent = TD3_BC(**kwargs)
-    for _ in range(1):
-        agent.learn(total_timesteps=int(1e4), bc=True)
-        mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
-        print(100 * mean_reward)
+    # for _ in range(1):
+    #     agent.learn(total_timesteps=int(1e4), bc=True)
+    # mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
+    # print(100 * mean_reward)
 
     agent.actor.optimizer = OAdam(agent.actor.parameters())
     agent.critic.optimizer = OAdam(agent.critic.parameters())
@@ -183,6 +238,19 @@ def train(
         expert_dataset["rewards"][: cfg.algorithm.initial_exploration_steps],
         expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
     )
+    expert_replay_buffer = mbrl.util.replay_buffer.ReplayBuffer(
+        capacity=int(1e6),
+        obs_shape=obs_shape,
+        action_shape=act_shape,
+        rng=rng,
+    )
+    expert_replay_buffer.add_batch(
+        expert_dataset["observations"],
+        expert_dataset["actions"],
+        expert_dataset["next_observations"],
+        expert_dataset["rewards"],
+        expert_dataset["terminals"],
+    )
     rollout_batch_size = (
         cfg.overrides.effective_model_rollouts_per_step * cfg.algorithm.freq_train_model
     )
@@ -215,11 +283,23 @@ def train(
     env_steps = 0
     disc_steps = 0
     print(f"Training {env_name}")
-    tbar = tqdm(range(500_000), ncols=0, mininterval=10)
-    while env_steps < 500_000:
+    tbar = tqdm(range(cfg.overrides.num_steps), ncols=0, mininterval=10)
+    epoch = 0
+    while env_steps < cfg.overrides.num_steps:
+        rollout_length = int(
+            mbrl.util.math.truncated_linear(
+                *(cfg.overrides.rollout_schedule + [epoch + 1])
+            )
+        )
+        sac_buffer_capacity = rollout_length * rollout_batch_size * trains_per_epoch
+        sac_buffer_capacity *= cfg.overrides.num_epochs_to_retain_sac_buffer
+        sac_buffer = maybe_replace_sac_buffer(
+            sac_buffer, obs_shape, act_shape, sac_buffer_capacity, cfg.seed
+        )
+        agent.pi_replay_buffer = sac_buffer
         obs, done = None, False
         # for step in range(pi_steps):
-        for epoch in range(700):
+        for epoch in range(cfg.overrides.epoch_length):
             if epoch == 0 or done:
                 obs, done = env.reset(), False
             next_obs, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
@@ -230,15 +310,46 @@ def train(
                 replay_buffer=agent.pi_replay_buffer,
                 additional_buffer=replay_buffer,
             )
-            agent.step(bc=False)
-            tbar.update(1)
-            env_steps += 1
-            obs = next_obs
 
-            if env_steps % cfg.freq_train_discriminator == 0:
+            (
+                exp_obs,
+                exp_next_obs,
+                exp_act,
+                exp_reward,
+                exp_done,
+            ) = expert_replay_buffer.sample_one()
+            replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
+
+            if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
+                print("Train model")
+                # mbrl.util.common.train_model_and_save_model_and_data(
+                #     dynamics_model,
+                #     model_trainer,
+                #     cfg.overrides,
+                #     replay_buffer,
+                #     work_dir=work_dir,
+                # )
+
+                print("Populate sac buffer")
+                use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
+                rollout_model_and_populate_sac_buffer(
+                    model_env,
+                    expert_replay_buffer if use_expert_data else replay_buffer,
+                    agent,
+                    sac_buffer,
+                    cfg.algorithm.sac_samples_action,
+                    rollout_length,
+                    rollout_batch_size,
+                )
+
+            for _ in range(cfg.overrides.num_sac_updates_per_step):
+                agent.step(bc=False)
+                updates_made += 1
+
+            if updates_made % cfg.freq_train_discriminator == 0:
                 # agent.learn(total_timesteps=pi_steps, log_interval=1000)
                 # steps += pi_steps
-                print(f"Training Discriminator at step {env_steps}")
+                # print(f"Training Discriminator at step {env_steps}")
                 if not disc_steps == 0:
                     learning_rate_used = learn_rate / disc_steps
                 else:
@@ -264,7 +375,7 @@ def train(
                     f_opt.step()
                 disc_steps += 1
 
-            if env_steps % cfg.freq_eval == 0:
+            if env_steps % cfg.freq_eval == 0 and env_steps != 0:
                 mean_reward, std_reward = evaluate_policy(
                     agent, test_env, n_eval_episodes=25
                 )
@@ -274,4 +385,10 @@ def train(
                 std_rewards.append(std_reward)
                 # env_steps.append(steps)
                 print("{0} Iteration: {1}".format(int(env_steps), mean_reward))
+
+            tbar.update(1)
+            env_steps += 1
+            obs = next_obs
+
+        epoch += 1
     # ----------------------------- ORIGINAL FILTER LOOP END --------------------------
