@@ -152,7 +152,6 @@ def sample_from_learned_model(
         )
         obs = real_env_obs
         for _ in range(rollout_horizon):
-            breakpoint()
             action = agent.predict(obs, deterministic=True)
             if isinstance(action, tuple):
                 action = action[0]
