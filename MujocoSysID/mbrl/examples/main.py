@@ -8,12 +8,8 @@ import numpy as np
 import omegaconf
 import torch
 
-import mbrl.algorithms.mbpo as mbpo
-import mbrl.algorithms.pets as pets
-import mbrl.algorithms.planet as planet
-import mbrl.algorithms.lamps as lamps
 import mbrl.algorithms.lamps_am as lamps_am
-import mbrl.algorithms.sysid as sysid
+import mbrl.algorithms.lamps_am_sac_buf as lamps_am_sac_buf
 # import mbrl.algorithms.mm as mm
 
 import mbrl.util.env
@@ -25,6 +21,8 @@ def run(cfg: omegaconf.DictConfig):
     torch.manual_seed(cfg.seed)
     if cfg.algorithm.name == "lamps_am":
         return lamps_am.train(None, None, None, cfg, silent=cfg.silent)
+    elif cfg.algorithm.name == "lamps_am_sac_buf":
+        return lamps_am_sac_buf.train(None, None, None, cfg, silent=cfg.silent)
     else:
         raise NotImplementedError
     # if cfg.algorithm.name == "pets":

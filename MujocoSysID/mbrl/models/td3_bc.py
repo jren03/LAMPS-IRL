@@ -4,7 +4,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import tqdm
+
+from typing import cast
+import mbrl.types
 from mbrl.util.oadam import OAdam
+from mbrl.util.replay_buffer import ReplayBuffer
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -99,6 +103,8 @@ class TD3_BC(object):
         self.env = env
         self.f = f
 
+        self.half = True
+
         self.total_it = 0
 
     def predict(self, obs, state=None, deterministic=True):
@@ -107,12 +113,14 @@ class TD3_BC(object):
 
     def learn(self, total_timesteps, log_interval=1000, bc=False):
         if bc:
-            for _ in tqdm.tqdm(range(total_timesteps), leave=False, ncols=0):
+            for _ in tqdm.tqdm(range(total_timesteps)):
                 self.step(bc=bc)
         else:
             obs = self.env.reset()
             done = False
-            for _ in tqdm.tqdm(range(total_timesteps), leave=False, ncols=0):
+            for _ in tqdm.tqdm(
+                range(total_timesteps), ncols=0, leave=False, desc="TD3 Learn"
+            ):
                 act = self.predict(obs)[0]
                 next_obs, rew, done, _ = self.env.step(act)
                 self.pi_replay_buffer.add(obs, act, next_obs, rew.cpu().detach(), done)
@@ -124,9 +132,41 @@ class TD3_BC(object):
 
     def step(self, batch_size=256, bc=False):
         self.total_it += 1
-
-        # Sample replay buffer
-        if self.pi_replay_buffer.size > 1e4 and np.random.uniform() > 0.5:
+        if not bc and self.half:
+            # 50/50 sample, loss function on all data
+            learner_batch = self.pi_replay_buffer.sample(batch_size // 2)
+            if isinstance(self.pi_replay_buffer, ReplayBuffer):
+                state, action, next_state, reward, not_done = list(
+                    map(
+                        lambda x: torch.FloatTensor(x).to(device),
+                        cast(mbrl.types.TransitionBatch, learner_batch).astuple(),
+                    )
+                )
+                breakpoint()
+                reward = reward.reshape(-1, 1)
+            else:
+                state, action, next_state, reward, not_done = learner_batch
+            expert_batch = self.q_replay_buffer.sample(batch_size // 2)
+            reward = -self.f(torch.cat([state, action], dim=1)).reshape(reward.shape)
+            (
+                exp_state,
+                exp_action,
+                exp_next_state,
+                exp_reward,
+                exp_not_done,
+            ) = self.q_replay_buffer.sample(batch_size // 2)
+            exp_reward = -self.f(torch.cat([exp_state, exp_action], dim=1)).reshape(
+                exp_reward.shape
+            )
+            state = torch.cat([state, exp_state], dim=0)
+            action = torch.cat([action, exp_action], dim=0)
+            next_state = torch.cat([next_state, exp_next_state], dim=0)
+            reward = torch.cat([reward, exp_reward], dim=0)
+            not_done = torch.cat([not_done, exp_not_done], dim=0)
+            pi_data = False
+        elif self.pi_replay_buffer.size > 1e4 and (
+            np.random.uniform() > 0.5 or (not bc)
+        ):
             state, action, next_state, reward, not_done = self.pi_replay_buffer.sample(
                 batch_size
             )
