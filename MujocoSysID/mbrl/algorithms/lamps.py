@@ -222,16 +222,11 @@ def train(
     )
     # if is_maze:
     replay_buffer.add_batch(
-        # expert_dataset["observations"][:1000],
-        # expert_dataset["actions"][:1000],
-        # expert_dataset["next_observations"][:1000],
-        # expert_dataset["rewards"][:1000],
-        # expert_dataset["terminals"][:1000],
-        expert_dataset["observations"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["actions"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["next_observations"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["rewards"][: cfg.algorithm.initial_exploration_steps],
-        expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
+        expert_dataset["observations"][:1000],
+        expert_dataset["actions"][:1000],
+        expert_dataset["next_observations"][:1000],
+        expert_dataset["rewards"][:1000],
+        expert_dataset["terminals"][:1000],
     )
     expert_replay_buffer.add_batch(
         expert_dataset["observations"][: cfg.overrides.expert_size],
