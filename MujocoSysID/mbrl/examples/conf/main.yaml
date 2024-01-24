@@ -6,12 +6,14 @@ defaults:
 
 device: "cuda:0"
 log_frequency_agent: 1000
+eval_frequency: 10000
 save_video: false
 debug_mode: false
 
 silent: true
 experiment: default
 seed: 1
+
 
 
 root_dir: "./exp"
