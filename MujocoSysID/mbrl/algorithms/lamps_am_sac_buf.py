@@ -167,14 +167,20 @@ def train(
         torch_generator.manual_seed(cfg.seed)
     use_double_dtype = cfg.algorithm.get("normalize_double_precision", False)
     dtype = np.double if use_double_dtype else np.float32
-    sac_buffer = mbrl.util.common.create_replay_buffer(
-        cfg,
-        obs_shape,
-        act_shape,
+    # sac_buffer = mbrl.util.common.create_replay_buffer(
+    #     cfg,
+    #     obs_shape,
+    #     act_shape,
+    #     rng=rng,
+    #     obs_type=dtype,
+    #     action_type=dtype,
+    #     reward_type=dtype,
+    # )
+    sac_buffer = mbrl.util.replay_buffer.ReplayBuffer(
+        capacity=int(1e6),
+        obs_shape=obs_shape,
+        action_shape=act_shape,
         rng=rng,
-        obs_type=dtype,
-        action_type=dtype,
-        reward_type=dtype,
     )
     agent.pi_replay_buffer = sac_buffer
     # ----------------------- LAMPS ------------------------------
