@@ -156,8 +156,6 @@ def train(
     #     )
     expert_dataset = fetch_demos(
         cfg.overrides.env,
-        zero_out_rewards=cfg.train_discriminator,
-        use_mbrl_demos=cfg.use_mbrl_demos,
     )
 
     work_dir = work_dir or os.getcwd()
