@@ -15,6 +15,7 @@ import torch
 
 import mbrl.planning
 import mbrl.types
+from mbrl.util.env import TremblingHandWrapper
 
 
 def _get_term_and_reward_fn(
@@ -95,6 +96,13 @@ def _legacy_make_env(
         env = gym.wrappers.TimeLimit(
             env, max_episode_steps=cfg.overrides.get("trial_length", 1000)
         )
+
+    env_name = cfg.overrides.env.lower()
+    if "walker" in env_name:
+        p_tremble = 0.05
+    else:
+        raise ValueError(f"Invalid environment: {env_name}")
+    env = TremblingHandWrapper(env, p_tremble=p_tremble)
 
     env, reward_fn = _handle_learned_rewards_and_seed(cfg, env, reward_fn)
     return env, term_fn, reward_fn
