@@ -107,7 +107,40 @@ def train(
     cur_env = TremblingHandWrapper(cur_env, p_tremble=0)
     eval_env = TremblingHandWrapper(GoalWrapper(gym.make(env_name)), p_tremble=0)
 
-    # ---------------------------------- LAMPS ------------------------------------
+    state_dim = cur_env.observation_space.shape[0]
+    action_dim = cur_env.action_space.shape[0]
+    max_action = float(cur_env.action_space.high[0])
+    q_replay_buffer = QReplayBuffer(state_dim, action_dim)
+    q_replay_buffer.add_d4rl_dataset(expert_dataset)
+    pi_replay_buffer = QReplayBuffer(state_dim, action_dim)
+
+    kwargs = {
+        "state_dim": state_dim,
+        "action_dim": action_dim,
+        "max_action": max_action,
+        "discount": 0.99,
+        "tau": 0.005,
+        # TD3
+        "policy_noise": 0.2 * max_action,
+        "noise_clip": 0.5 * max_action,
+        "policy_freq": 2,
+        # TD3 + BC
+        "alpha": 2.5,
+        "q_replay_buffer": q_replay_buffer,
+        "pi_replay_buffer": pi_replay_buffer,
+        "env": cur_env,
+        "f": f_net,
+    }
+    agent = TD3_BC(**kwargs)
+    for _ in range(1):
+        agent.learn(total_timesteps=int(1e4), bc=True)
+        mean_reward, std_reward = evaluate_policy(agent, eval_env, n_eval_episodes=25)
+        print(100 * mean_reward)
+
+    agent.actor.optimizer = OAdam(agent.actor.parameters())
+    agent.critic.optimizer = OAdam(agent.critic.parameters())
+
+    # ---------------------------------- LAMPS START ------------------------------------
     MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT
     logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)
     logger.register_group(
@@ -167,41 +200,6 @@ def train(
         weight_decay=cfg.overrides.model_wd,
         logger=None if silent else logger,
     )
-    # ---------------------------------- LAMPS ------------------------------------
-
-    state_dim = cur_env.observation_space.shape[0]
-    action_dim = cur_env.action_space.shape[0]
-    max_action = float(cur_env.action_space.high[0])
-    q_replay_buffer = QReplayBuffer(state_dim, action_dim)
-    q_replay_buffer.add_d4rl_dataset(expert_dataset)
-    pi_replay_buffer = QReplayBuffer(state_dim, action_dim)
-
-    kwargs = {
-        "state_dim": state_dim,
-        "action_dim": action_dim,
-        "max_action": max_action,
-        "discount": 0.99,
-        "tau": 0.005,
-        # TD3
-        "policy_noise": 0.2 * max_action,
-        "noise_clip": 0.5 * max_action,
-        "policy_freq": 2,
-        # TD3 + BC
-        "alpha": 2.5,
-        "q_replay_buffer": q_replay_buffer,
-        "pi_replay_buffer": pi_replay_buffer,
-        "env": cur_env,
-        "f": f_net,
-    }
-    agent = TD3_BC(**kwargs)
-    for _ in range(1):
-        agent.learn(total_timesteps=int(1e4), bc=True)
-        mean_reward, std_reward = evaluate_policy(agent, eval_env, n_eval_episodes=25)
-        print(100 * mean_reward)
-
-    agent.actor.optimizer = OAdam(agent.actor.parameters())
-    agent.critic.optimizer = OAdam(agent.critic.parameters())
-
     mbrl.util.common.rollout_agent_trajectories(
         env,
         cfg.algorithm.initial_exploration_steps,
@@ -210,6 +208,8 @@ def train(
         replay_buffer=replay_buffer,
         additional_buffer=policy_buffer,
     )
+    sac_buffer = None
+    # ---------------------------------- LAMPS END ------------------------------------
 
     steps = 0
     print(f"Training {env_name}")

@@ -9,6 +9,7 @@ import omegaconf
 import torch
 
 import mbrl.algorithms.lamps_am as lamps_am
+import mbrl.algorithms.lamps_am_mb as lamps_am_mb
 import mbrl.algorithms.lamps_am_sac_buf as lamps_am_sac_buf
 # import mbrl.algorithms.mm as mm
 
@@ -21,6 +22,8 @@ def run(cfg: omegaconf.DictConfig):
     torch.manual_seed(cfg.seed)
     if cfg.algorithm.name == "lamps_am":
         return lamps_am.train(None, None, None, cfg, silent=cfg.silent)
+    elif cfg.algorithm.name == "lamps_am_mb":
+        return lamps_am_mb.train(None, None, None, cfg, silent=cfg.silent)
     elif cfg.algorithm.name == "lamps_am_sac_buf":
         return lamps_am_sac_buf.train(None, None, None, cfg, silent=cfg.silent)
     else:

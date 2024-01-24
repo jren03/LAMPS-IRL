@@ -139,7 +139,8 @@ class TD3_BC(object):
         )
         reward = reward.reshape(-1, 1)
         not_done = not_done.reshape(-1, 1)
-        return state, action, next_state, reward, not_done
+        done = 1 - not_done
+        return state, action, next_state, reward, done
 
     def step(self, batch_size=256, bc=False):
         self.total_it += 1
@@ -174,7 +175,7 @@ class TD3_BC(object):
         ):
             learner_batch = self.pi_replay_buffer.sample(batch_size)
             if isinstance(self.pi_replay_buffer, ReplayBuffer):
-                state, action, next_state, reward, not_done = self.split_mbrl_batch(
+                state, action, next_state, reward, done = self.split_mbrl_batch(
                     learner_batch
                 )
             else:
