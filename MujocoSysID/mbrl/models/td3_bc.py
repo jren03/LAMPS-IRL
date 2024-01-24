@@ -130,23 +130,28 @@ class TD3_BC(object):
                     obs = self.env.reset()
                     done = False
 
+    def split_mbrl_batch(self, batch):
+        state, action, next_state, reward, not_done = list(
+            map(
+                lambda x: torch.FloatTensor(x).to(device),
+                cast(mbrl.types.TransitionBatch, batch).astuple(),
+            )
+        )
+        reward = reward.reshape(-1, 1)
+        not_done = not_done.reshape(-1, 1)
+        return state, action, next_state, reward, not_done
+
     def step(self, batch_size=256, bc=False):
         self.total_it += 1
         if not bc and self.half:
             # 50/50 sample, loss function on all data
             learner_batch = self.pi_replay_buffer.sample(batch_size // 2)
             if isinstance(self.pi_replay_buffer, ReplayBuffer):
-                state, action, next_state, reward, not_done = list(
-                    map(
-                        lambda x: torch.FloatTensor(x).to(device),
-                        cast(mbrl.types.TransitionBatch, learner_batch).astuple(),
-                    )
+                state, action, next_state, reward, not_done = self.split_mbrl_batch(
+                    learner_batch
                 )
-                breakpoint()
-                reward = reward.reshape(-1, 1)
             else:
                 state, action, next_state, reward, not_done = learner_batch
-            expert_batch = self.q_replay_buffer.sample(batch_size // 2)
             reward = -self.f(torch.cat([state, action], dim=1)).reshape(reward.shape)
             (
                 exp_state,
@@ -167,9 +172,13 @@ class TD3_BC(object):
         elif self.pi_replay_buffer.size > 1e4 and (
             np.random.uniform() > 0.5 or (not bc)
         ):
-            state, action, next_state, reward, not_done = self.pi_replay_buffer.sample(
-                batch_size
-            )
+            learner_batch = self.pi_replay_buffer.sample(batch_size)
+            if isinstance(self.pi_replay_buffer, ReplayBuffer):
+                state, action, next_state, reward, not_done = self.split_mbrl_batch(
+                    learner_batch
+                )
+            else:
+                state, action, next_state, reward, not_done = learner_batch
             pi_data = True
         else:
             state, action, next_state, _, not_done = self.q_replay_buffer.sample(

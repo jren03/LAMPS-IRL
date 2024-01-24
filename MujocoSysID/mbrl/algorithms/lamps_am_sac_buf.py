@@ -133,16 +133,17 @@ def train(
         "f": f_net,
     }
     agent = TD3_BC(**kwargs)
-    for _ in range(1):
-        agent.learn(total_timesteps=int(1e4), bc=True)
-        mean_reward, std_reward = evaluate_policy(pi, eval_env, n_eval_episodes=25)
-        print(100 * mean_reward)
+    # for _ in range(1):
+    #     agent.learn(total_timesteps=int(1e4), bc=True)
+    #     mean_reward, std_reward = evaluate_policy(agent, eval_env, n_eval_episodes=25)
+    #     print(100 * mean_reward)
 
     agent.actor.optimizer = OAdam(agent.actor.parameters())
     agent.critic.optimizer = OAdam(agent.critic.parameters())
 
     # ----------------------- LAMPS ------------------------------
     MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT
+    work_dir = work_dir or os.getcwd()
     logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)
     logger.register_group(
         mbrl.constants.RESULTS_LOG_NAME,
@@ -150,8 +151,8 @@ def train(
         color="green",
         dump_frequency=1,
     )
-    obs_shape = env.observation_space.shape
-    act_shape = env.action_space.shape
+    obs_shape = cur_env.observation_space.shape
+    act_shape = cur_env.action_space.shape
     rollout_batch_size = (
         cfg.overrides.effective_model_rollouts_per_step * cfg.algorithm.freq_train_model
     )
@@ -210,7 +211,9 @@ def train(
             f_opt.step()
 
         if outer % log_interval == 0:
-            mean_reward, std_reward = evaluate_policy(pi, eval_env, n_eval_episodes=25)
+            mean_reward, std_reward = evaluate_policy(
+                agent, eval_env, n_eval_episodes=25
+            )
             mean_reward = mean_reward * 100
             std_reward = std_reward * 100
             mean_rewards.append(mean_reward)
