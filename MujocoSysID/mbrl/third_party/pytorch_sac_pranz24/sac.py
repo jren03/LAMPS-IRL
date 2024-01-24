@@ -11,6 +11,8 @@ from mbrl.third_party.pytorch_sac_pranz24.model import (
 )
 from mbrl.third_party.pytorch_sac_pranz24.utils import hard_update, soft_update
 
+from termcolor import cprint
+
 
 class SAC(object):
     def __init__(self, num_inputs, action_space, args):
@@ -38,6 +40,7 @@ class SAC(object):
         if self.policy_type == "Gaussian":
             # Target Entropy = −dim(A) (e.g. , -6 for HalfCheetah-v2) as given in the paper
             if self.automatic_entropy_tuning is True:
+                cprint("Using automatic entropy tuning", attrs=["bold"])
                 if args.target_entropy is None:
                     self.target_entropy = -torch.prod(
                         torch.Tensor(action_space.shape).to(self.device)
@@ -46,6 +49,8 @@ class SAC(object):
                     self.target_entropy = args.target_entropy
                 self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
                 self.alpha_optim = Adam([self.log_alpha], lr=args.lr)
+            else:
+                cprint("Not using automatic entropy tuning", attrs=["bold"])
 
             self.policy = GaussianPolicy(
                 num_inputs, action_space.shape[0], args.hidden_size, action_space
@@ -75,9 +80,9 @@ class SAC(object):
 
     def estimate_value(self, state):
         _, _, action = self.policy.sample(state)
-        q1, q2 = self.critic(state,action)
+        q1, q2 = self.critic(state, action)
 
-        return torch.min(q1,q2)
+        return torch.min(q1, q2)
 
     def update_parameters(
         self, memory, batch_size, updates, logger=None, reverse_mask=False
@@ -178,7 +183,13 @@ class SAC(object):
         )
 
     def adv_update_parameters(
-        self, memory, expert_memory, batch_size, updates, logger=None, reverse_mask=False
+        self,
+        memory,
+        expert_memory,
+        batch_size,
+        updates,
+        logger=None,
+        reverse_mask=False,
     ):
         # Sample a batch from memory
         (
@@ -205,7 +216,7 @@ class SAC(object):
 
         expert_state_batch = torch.FloatTensor(expert_state_batch).to(self.device)
         expert_action_batch = torch.FloatTensor(expert_action_batch).to(self.device)
-        
+
         if reverse_mask:
             mask_batch = mask_batch.logical_not()
 
@@ -293,7 +304,6 @@ class SAC(object):
             alpha_tlogs.item(),
         )
 
-
     # Save model parameters
     def save_checkpoint(self, env_name=None, suffix="", ckpt_path=None):
         if ckpt_path is None:
@@ -317,7 +327,7 @@ class SAC(object):
     def load_checkpoint(self, ckpt_path, evaluate=False):
         print("Loading models from {}".format(ckpt_path))
         if ckpt_path is not None:
-            checkpoint = torch.load(ckpt_path, map_location='cuda:0')
+            checkpoint = torch.load(ckpt_path, map_location="cuda:0")
             self.policy.load_state_dict(checkpoint["policy_state_dict"])
             self.critic.load_state_dict(checkpoint["critic_state_dict"])
             self.critic_target.load_state_dict(checkpoint["critic_target_state_dict"])

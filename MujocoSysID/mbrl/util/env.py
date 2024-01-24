@@ -99,7 +99,7 @@ def _legacy_make_env(
 
     env_name = cfg.overrides.env.lower()
     if "walker" in env_name:
-        p_tremble = 0.05
+        p_tremble = cfg.p_tremble
     else:
         raise ValueError(f"Invalid environment: {env_name}")
     env = TremblingHandWrapper(env, p_tremble=p_tremble)
