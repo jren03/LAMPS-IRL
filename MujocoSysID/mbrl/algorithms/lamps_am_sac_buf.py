@@ -133,10 +133,10 @@ def train(
         "f": f_net,
     }
     agent = TD3_BC(**kwargs)
-    # for _ in range(1):
-    #     agent.learn(total_timesteps=int(1e4), bc=True)
-    #     mean_reward, std_reward = evaluate_policy(agent, eval_env, n_eval_episodes=25)
-    #     print(100 * mean_reward)
+    for _ in range(1):
+        agent.learn(total_timesteps=int(1e4), bc=True)
+        mean_reward, std_reward = evaluate_policy(agent, eval_env, n_eval_episodes=25)
+        print(100 * mean_reward)
 
     agent.actor.optimizer = OAdam(agent.actor.parameters())
     agent.critic.optimizer = OAdam(agent.critic.parameters())
@@ -162,9 +162,9 @@ def train(
     updates_made = 0
     env_steps = 0
     rng = np.random.default_rng(seed=cfg.seed)
-    # torch_generator = torch.Generator(device=cfg.device)
-    # if cfg.seed is not None:
-    #     torch_generator.manual_seed(cfg.seed)
+    torch_generator = torch.Generator(device=cfg.device)
+    if cfg.seed is not None:
+        torch_generator.manual_seed(cfg.seed)
     use_double_dtype = cfg.algorithm.get("normalize_double_precision", False)
     dtype = np.double if use_double_dtype else np.float32
     # sac_buffer = mbrl.util.common.create_replay_buffer(
@@ -182,7 +182,7 @@ def train(
         action_shape=act_shape,
         rng=rng,
     )
-    # agent.pi_replay_buffer = sac_buffer
+    agent.pi_replay_buffer = sac_buffer
     # ----------------------- LAMPS ------------------------------
 
     steps = 0
