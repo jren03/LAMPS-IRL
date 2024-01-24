@@ -15,7 +15,7 @@ import torch
 
 import mbrl.planning
 import mbrl.types
-from mbrl.util.env import TremblingHandWrapper
+from mbrl.env.gym_wrappers import TremblingHandWrapper
 
 
 def _get_term_and_reward_fn(
