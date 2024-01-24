@@ -6,7 +6,6 @@ defaults:
 
 device: "cuda:0"
 log_frequency_agent: 1000
-eval_frequency: 10000
 save_video: false
 debug_mode: false
 
@@ -14,7 +13,9 @@ silent: true
 experiment: default
 seed: 1
 
-
+# JUNTAO params
+freq_eval: 25000
+freq_train_discriminator: 5000
 
 root_dir: "./exp"
 hydra:

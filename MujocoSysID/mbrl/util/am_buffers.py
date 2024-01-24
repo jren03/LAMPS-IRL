@@ -48,12 +48,17 @@ class QReplayBuffer(object):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    def _convert_if_tensor(self, x):
+        if torch.is_tensor(x):
+            return x.cpu().detach().numpy()
+        return x
+
     def add(self, state, action, next_state, reward, done):
-        self.state[self.ptr] = state
-        self.action[self.ptr] = action
-        self.next_state[self.ptr] = next_state
-        self.reward[self.ptr] = reward
-        self.not_done[self.ptr] = 1.0 - done
+        self.state[self.ptr] = self._convert_if_tensor(state)
+        self.action[self.ptr] = self._convert_if_tensor(action)
+        self.next_state[self.ptr] = self._convert_if_tensor(next_state)
+        self.reward[self.ptr] = self._convert_if_tensor(reward)
+        self.not_done[self.ptr] = 1.0 - self._convert_if_tensor(done)
 
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)

@@ -8,6 +8,7 @@ from typing import Optional, Sequence, cast
 
 import gym
 import hydra.utils
+from networkx import minimum_node_cut
 import numpy as np
 import omegaconf
 import torch
@@ -211,46 +212,66 @@ def train(
     # ---------------------------------- LAMPS END ------------------------------------
 
     # ---------------------------------- ORIGINAL FILTER LOOP --------------------------
-    steps = 0
+    env_steps = 0
+    disc_steps = 0
     print(f"Training {env_name}")
-    for outer in range(outer_steps):
-        if not outer == 0:
-            learning_rate_used = learn_rate / outer
-        else:
-            learning_rate_used = learn_rate
-        f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
-
-        # agent.learn(total_timesteps=pi_steps, log_interval=1000)
+    tbar = tqdm(range(500_000), ncols=0, mininterval=10)
+    while env_steps < 500_000:
         obs, done = None, False
-        steps += pi_steps
-
-        S_curr, A_curr, s = sample(env, agent, num_traj_sample, no_regret=False)
-        steps += s
-        learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
-
-        for _ in range(f_steps):
-            learner_sa = learner_sa_pairs[
-                np.random.choice(len(learner_sa_pairs), batch_size)
-            ]
-            expert_sa = expert_sa_pairs[
-                np.random.choice(len(expert_sa_pairs), batch_size)
-            ]
-            f_opt.zero_grad()
-            f_learner = f_net(learner_sa.float())
-            f_expert = f_net(expert_sa.float())
-            gp = gradient_penalty(learner_sa, expert_sa, f_net)
-            loss = f_expert.mean() - f_learner.mean() + 10 * gp
-            loss.backward()
-            f_opt.step()
-
-        if outer % log_interval == 0:
-            mean_reward, std_reward = evaluate_policy(
-                agent, test_env, n_eval_episodes=25
+        # for step in range(pi_steps):
+        for epoch in range(700):
+            if epoch == 0 or done:
+                obs, done = env.reset(), False
+            next_obs, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
+                env,
+                obs,
+                agent,
+                {},
+                replay_buffer=agent.pi_replay_buffer,
+                additional_buffer=replay_buffer,
             )
-            mean_reward = mean_reward * 100
-            std_reward = std_reward * 100
-            mean_rewards.append(mean_reward)
-            std_rewards.append(std_reward)
-            # env_steps.append(steps)
-            print("{0} Iteration: {1}".format(int(outer), mean_reward))
+            agent.step(bc=False)
+            tbar.update(1)
+            env_steps += 1
+            obs = next_obs
+
+            if env_steps % cfg.freq_train_discriminator == 0:
+                # agent.learn(total_timesteps=pi_steps, log_interval=1000)
+                # steps += pi_steps
+                print(f"Training Discriminator at step {env_steps}")
+                if not disc_steps == 0:
+                    learning_rate_used = learn_rate / disc_steps
+                else:
+                    learning_rate_used = learn_rate
+                f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
+
+                S_curr, A_curr, s = sample(env, agent, num_traj_sample, no_regret=False)
+                learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
+
+                for _ in range(f_steps):
+                    learner_sa = learner_sa_pairs[
+                        np.random.choice(len(learner_sa_pairs), batch_size)
+                    ]
+                    expert_sa = expert_sa_pairs[
+                        np.random.choice(len(expert_sa_pairs), batch_size)
+                    ]
+                    f_opt.zero_grad()
+                    f_learner = f_net(learner_sa.float())
+                    f_expert = f_net(expert_sa.float())
+                    gp = gradient_penalty(learner_sa, expert_sa, f_net)
+                    loss = f_expert.mean() - f_learner.mean() + 10 * gp
+                    loss.backward()
+                    f_opt.step()
+                disc_steps += 1
+
+            if env_steps % cfg.freq_eval == 0:
+                mean_reward, std_reward = evaluate_policy(
+                    agent, test_env, n_eval_episodes=25
+                )
+                mean_reward = mean_reward * 100
+                std_reward = std_reward * 100
+                mean_rewards.append(mean_reward)
+                std_rewards.append(std_reward)
+                # env_steps.append(steps)
+                print("{0} Iteration: {1}".format(int(env_steps), mean_reward))
     # ----------------------------- ORIGINAL FILTER LOOP END --------------------------
