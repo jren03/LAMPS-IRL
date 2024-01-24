@@ -216,7 +216,7 @@ def train(
             )
             mean_reward = mean_reward * 100
             std_reward = std_reward * 100
-            mean_rewards.append(mean_reward)
-            std_rewards.append(std_reward)
-            env_steps.append(steps)
+            # mean_rewards.append(mean_reward)
+            # std_rewards.append(std_reward)
+            # env_steps.append(steps)
             print("{0} Iteration: {1}".format(int(outer), mean_reward))
