@@ -1,16 +1,36 @@
-import numpy as np
 import tqdm
 import d4rl
 import gym
 import h5py
 import torch
+import argparse
+import numpy as np
 from pathlib import Path
 
-EPS = 1e-6
+
+data_root = Path("/share/portal/jlr429/pessimistic-irl/expert_data")
 
 
 def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
     env_name = env_name.replace("gym___", "")
+    possible_data_path = Path(data_root, f"{env_name}_demos.npz")
+    if possible_data_path.exists():
+        print(f"Loading from {possible_data_path}")
+        data = np.load(possible_data_path, allow_pickle=True)
+        return (
+            {
+                "observations": data["observations"],
+                "actions": data["actions"],
+                "next_observations": data["next_observations"],
+                "rewards": data["rewards"],
+                "terminals": data["terminals"],
+            },
+            torch.from_numpy(data["expert_sa_pairs"]),
+            data["qpos"],
+            data["qvel"],
+            data["goals"],
+        )
+
     if "maze" in env_name:
         env = gym.make(env_name)
         dataset = env.get_dataset()

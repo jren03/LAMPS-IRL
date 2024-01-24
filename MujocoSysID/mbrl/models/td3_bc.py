@@ -107,6 +107,14 @@ class TD3_BC(object):
 
         self.total_it = 0
 
+    def reset(self):
+        # for mbrl: do nothing
+        return
+
+    def act(self, obs, **kwarg):
+        # wrapper to handle mbrl calls
+        return self.predict(obs)[0]
+
     def predict(self, obs, state=None, deterministic=True):
         obs = torch.FloatTensor(obs.reshape(1, -1)).to(device)
         return self.actor(obs).cpu().data.numpy().flatten(), None

@@ -7,6 +7,7 @@ import hydra
 import numpy as np
 import omegaconf
 import torch
+import gym
 
 import mbrl.algorithms.lamps_am as lamps_am
 import mbrl.algorithms.lamps_am_mb as lamps_am_mb
@@ -20,12 +21,17 @@ import mbrl.util.env
 def run(cfg: omegaconf.DictConfig):
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
+
+    env_name = cfg.overrides.env.lower().replace("gym___", "")
+    env = gym.make(env_name)
+    test_env = gym.make(env_name)
+
     if cfg.algorithm.name == "lamps_am":
-        return lamps_am.train(None, None, None, cfg, silent=cfg.silent)
+        return lamps_am.train(env, test_env, None, cfg, silent=cfg.silent)
     elif cfg.algorithm.name == "lamps_am_mb":
-        return lamps_am_mb.train(None, None, None, cfg, silent=cfg.silent)
+        return lamps_am_mb.train(env, test_env, None, cfg, silent=cfg.silent)
     elif cfg.algorithm.name == "lamps_am_sac_buf":
-        return lamps_am_sac_buf.train(None, None, None, cfg, silent=cfg.silent)
+        return lamps_am_sac_buf.train(env, test_env, None, cfg, silent=cfg.silent)
     else:
         raise NotImplementedError
     # if cfg.algorithm.name == "pets":

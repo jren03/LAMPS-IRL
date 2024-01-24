@@ -89,27 +89,25 @@ def train(
     log_interval = 5
 
     env_name = cfg.overrides.env.lower().replace("gym___", "")
-    cur_env = gym.make(env_name)
-
     expert_dataset, expert_sa_pairs, qpos, qvel, goals = fetch_demos(env_name)
     expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
     if "maze" in env_name:
-        cur_env = AntMazeResetWrapper(GoalWrapper(cur_env), qpos, qvel, goals)
+        env = AntMazeResetWrapper(GoalWrapper(env), qpos, qvel, goals)
     else:
         raise NotImplementedError
 
-    cur_env.alpha = alpha
-    f_net = Discriminator(cur_env).to(cfg.device)
+    env.alpha = alpha
+    f_net = Discriminator(env).to(cfg.device)
     f_opt = OAdam(f_net.parameters(), lr=learn_rate)
-    cur_env = RewardWrapper(cur_env, f_net)
+    env = RewardWrapper(env, f_net)
 
-    cur_env = TremblingHandWrapper(cur_env, p_tremble=0)
-    eval_env = TremblingHandWrapper(GoalWrapper(gym.make(env_name)), p_tremble=0)
+    env = TremblingHandWrapper(env, p_tremble=0)
+    test_env = TremblingHandWrapper(GoalWrapper(test_env), p_tremble=0)
 
-    state_dim = cur_env.observation_space.shape[0]
-    action_dim = cur_env.action_space.shape[0]
-    max_action = float(cur_env.action_space.high[0])
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.shape[0]
+    max_action = float(env.action_space.high[0])
     q_replay_buffer = QReplayBuffer(state_dim, action_dim)
     q_replay_buffer.add_d4rl_dataset(expert_dataset)
     pi_replay_buffer = QReplayBuffer(state_dim, action_dim)
@@ -128,19 +126,20 @@ def train(
         "alpha": 2.5,
         "q_replay_buffer": q_replay_buffer,
         "pi_replay_buffer": pi_replay_buffer,
-        "env": cur_env,
+        "env": env,
         "f": f_net,
     }
     agent = TD3_BC(**kwargs)
     for _ in range(1):
         agent.learn(total_timesteps=int(1e4), bc=True)
-        mean_reward, std_reward = evaluate_policy(agent, eval_env, n_eval_episodes=25)
+        mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
         print(100 * mean_reward)
 
     agent.actor.optimizer = OAdam(agent.actor.parameters())
     agent.critic.optimizer = OAdam(agent.critic.parameters())
 
     # ---------------------------------- LAMPS START ------------------------------------
+    work_dir = work_dir or os.getcwd()
     MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT
     logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)
     logger.register_group(
@@ -211,6 +210,7 @@ def train(
     sac_buffer = None
     # ---------------------------------- LAMPS END ------------------------------------
 
+    # ---------------------------------- ORIGINAL FILTER LOOP --------------------------
     steps = 0
     print(f"Training {env_name}")
     for outer in range(outer_steps):
@@ -220,10 +220,11 @@ def train(
             learning_rate_used = learn_rate
         f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
 
-        agent.learn(total_timesteps=pi_steps, log_interval=1000)
+        # agent.learn(total_timesteps=pi_steps, log_interval=1000)
+        obs, done = None, False
         steps += pi_steps
 
-        S_curr, A_curr, s = sample(cur_env, agent, num_traj_sample, no_regret=False)
+        S_curr, A_curr, s = sample(env, agent, num_traj_sample, no_regret=False)
         steps += s
         learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
 
@@ -244,11 +245,12 @@ def train(
 
         if outer % log_interval == 0:
             mean_reward, std_reward = evaluate_policy(
-                agent, eval_env, n_eval_episodes=25
+                agent, test_env, n_eval_episodes=25
             )
             mean_reward = mean_reward * 100
             std_reward = std_reward * 100
             mean_rewards.append(mean_reward)
             std_rewards.append(std_reward)
-            env_steps.append(steps)
+            # env_steps.append(steps)
             print("{0} Iteration: {1}".format(int(outer), mean_reward))
+    # ----------------------------- ORIGINAL FILTER LOOP END --------------------------
