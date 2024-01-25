@@ -14,7 +14,7 @@ experiment: default
 seed: 1
 
 # JUNTAO params
-freq_eval: 25000
+freq_eval: 10000
 freq_train_discriminator: 5000
 
 train_discriminator: true
