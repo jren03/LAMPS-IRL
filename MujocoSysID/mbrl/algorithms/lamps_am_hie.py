@@ -140,6 +140,7 @@ def train(
     env_steps = []
     log_interval = 5
 
+    cprint("This is AM_HIE", color="green", attrs=["bold"])
     env_name = cfg.overrides.env.lower().replace("gym___", "")
     (
         expert_dataset,

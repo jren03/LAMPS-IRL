@@ -144,6 +144,7 @@ def train(
     env_steps = []
     log_interval = 5
 
+    cprint("This is AM_MB", color="green", attrs=["bold"])
     env_name = cfg.overrides.env.lower().replace("gym___", "")
     expert_dataset, expert_sa_pairs, qpos, qvel, goals, _ = fetch_demos(
         env_name, zero_out_rewards=cfg.train_discriminator
