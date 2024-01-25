@@ -17,6 +17,9 @@ seed: 1
 freq_eval: 25000
 freq_train_discriminator: 5000
 
+train_discriminator: true
+use_ensemble: false
+
 root_dir: "./exp"
 hydra:
   run:

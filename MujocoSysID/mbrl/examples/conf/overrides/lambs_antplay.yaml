@@ -1,6 +1,7 @@
 # @package _group_
 env: "gym___antmaze-large-play-v2"
 # term_fn is set automatically by mbrl.util.env.EnvHandler.make_env
+term_fn: "no_termination"
 expert_dir: "expert/ant"
 
 policy_exp_ratio: 0

@@ -38,7 +38,7 @@ from mbrl.env.gym_wrappers import (
 )
 from mbrl.util.fetch_demos import fetch_demos
 from mbrl.util.am_buffers import QReplayBuffer
-from mbrl.models.arch import Discriminator
+from mbrl.models.arch import Discriminator, DiscriminatorEnsemble
 from mbrl.models.td3_bc import TD3_BC
 from mbrl.util.oadam import OAdam
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -153,7 +153,10 @@ def train(
         raise NotImplementedError
 
     env.alpha = alpha
-    f_net = Discriminator(env).to(cfg.device)
+    if cfg.use_ensemble:
+        f_net = DiscriminatorEnsemble(env).to(cfg.device)
+    else:
+        f_net = Discriminator(env).to(cfg.device)
     f_opt = OAdam(f_net.parameters(), lr=learn_rate)
     env = RewardWrapper(env, f_net)
 
@@ -185,8 +188,8 @@ def train(
         "f": f_net,
     }
     agent = TD3_BC(**kwargs)
-    # for _ in range(1):
-    #     agent.learn(total_timesteps=int(1e4), bc=True)
+    for _ in range(1):
+        agent.learn(total_timesteps=int(1e4), bc=True)
     # mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
     # print(100 * mean_reward)
 
@@ -237,65 +240,24 @@ def train(
         expert_dataset["rewards"][: cfg.algorithm.initial_exploration_steps],
         expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
     )
-    expert_replay_buffer = mbrl.util.replay_buffer.ReplayBuffer(
+    sac_buffer = mbrl.util.replay_buffer.ReplayBuffer(
         capacity=int(1e6),
         obs_shape=obs_shape,
         action_shape=act_shape,
         rng=rng,
     )
-    expert_replay_buffer.add_batch(
-        expert_dataset["observations"],
-        expert_dataset["actions"],
-        expert_dataset["next_observations"],
-        expert_dataset["rewards"],
-        expert_dataset["terminals"],
-    )
-    rollout_batch_size = (
-        cfg.overrides.effective_model_rollouts_per_step * cfg.algorithm.freq_train_model
-    )
-    trains_per_epoch = int(
-        np.ceil(cfg.overrides.epoch_length / cfg.overrides.freq_train_model)
-    )
     updates_made = 0
     env_steps = 0
-    model_env = mbrl.models.ModelEnv(
-        env, dynamics_model, termination_fn, None, generator=torch_generator
-    )
-    model_trainer = mbrl.models.ModelTrainer(
-        dynamics_model,
-        optim_lr=cfg.overrides.model_lr,
-        weight_decay=cfg.overrides.model_wd,
-        logger=None if silent else logger,
-    )
-    mbrl.util.common.rollout_agent_trajectories(
-        env,
-        cfg.algorithm.initial_exploration_steps,
-        agent,
-        {},
-        replay_buffer=replay_buffer,
-        additional_buffer=policy_buffer,
-    )
-    sac_buffer = None
     # ---------------------------------- LAMPS END ------------------------------------
 
     # ---------------------------------- ORIGINAL FILTER LOOP --------------------------
+    epoch = 0
     env_steps = 0
     disc_steps = 0
+    agent.pi_replay_buffer = sac_buffer
     print(f"Training {env_name}")
-    tbar = tqdm(range(cfg.overrides.num_steps), ncols=0, mininterval=10)
-    epoch = 0
-    while env_steps < cfg.overrides.num_steps:
-        rollout_length = int(
-            mbrl.util.math.truncated_linear(
-                *(cfg.overrides.rollout_schedule + [epoch + 1])
-            )
-        )
-        sac_buffer_capacity = rollout_length * rollout_batch_size * trains_per_epoch
-        sac_buffer_capacity *= cfg.overrides.num_epochs_to_retain_sac_buffer
-        sac_buffer = maybe_replace_sac_buffer(
-            sac_buffer, obs_shape, act_shape, sac_buffer_capacity, cfg.seed
-        )
-        agent.pi_replay_buffer = sac_buffer
+    tbar = tqdm(range(500_000), ncols=0, mininterval=10)
+    while env_steps < 500_000:
         obs, done = None, False
         # for step in range(pi_steps):
         for epoch in range(cfg.overrides.epoch_length):
@@ -307,41 +269,11 @@ def train(
                 agent,
                 {},
                 replay_buffer=agent.pi_replay_buffer,
-                additional_buffer=replay_buffer,
             )
 
-            (
-                exp_obs,
-                exp_next_obs,
-                exp_act,
-                exp_reward,
-                exp_done,
-            ) = expert_replay_buffer.sample_one()
-            replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
-
-            if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
-                mbrl.util.common.train_model_and_save_model_and_data(
-                    dynamics_model,
-                    model_trainer,
-                    cfg.overrides,
-                    replay_buffer,
-                    work_dir=work_dir,
-                )
-
-                use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
-                rollout_model_and_populate_sac_buffer(
-                    model_env,
-                    expert_replay_buffer if use_expert_data else replay_buffer,
-                    agent,
-                    sac_buffer,
-                    cfg.algorithm.sac_samples_action,
-                    rollout_length,
-                    rollout_batch_size,
-                )
-
-            for _ in range(cfg.overrides.num_sac_updates_per_step):
-                agent.step(bc=False)
-                updates_made += 1
+            # for _ in range(cfg.overrides.num_sac_updates_per_step):
+            agent.step(bc=False)
+            updates_made += 1
 
             if updates_made % cfg.freq_train_discriminator == 0:
                 # agent.learn(total_timesteps=pi_steps, log_interval=1000)

@@ -1,6 +1,7 @@
 from gym.spaces import Discrete
 from torch import nn
 import numpy as np
+import torch
 from mbrl.util.nn_utils import create_mlp, init_ortho
 
 
@@ -21,3 +22,15 @@ class Discriminator(nn.Module):
     def forward(self, inputs):
         output = self.net(inputs)
         return output.view(-1)
+
+
+class DiscriminatorEnsemble(nn.Module):
+    def __init__(self, env, n_discriminators=7):
+        super(DiscriminatorEnsemble, self).__init__()
+        self.ensemble = nn.ModuleList(
+            [Discriminator(env) for _ in range(n_discriminators)]
+        )
+
+    def forward(self, inputs):
+        outputs = torch.stack([disc(inputs) for disc in self.ensemble])
+        return torch.min(outputs, dim=0)[0]

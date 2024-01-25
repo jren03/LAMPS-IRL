@@ -98,8 +98,9 @@ def humanoid(act: torch.Tensor, next_obs: torch.Tensor):
 def ant_maze(act: torch.Tensor, next_obs: torch.Tensor):
     assert len(next_obs.shape) == 2
 
-    z = next_obs[:, 2]
-    done = (z < 2.0) + (z > 1.0)
+    x = next_obs[:, 0]
+    not_done = torch.isfinite(next_obs).all(-1) * (x >= 0.2) * (x <= 1.0)
 
+    done = ~not_done
     done = done[:, None]
     return done
