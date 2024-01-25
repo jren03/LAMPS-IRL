@@ -50,19 +50,21 @@ def calc_iqm(data):
     return iqm_scores
 
 
-def main(env_abbrv, env_name):
+def main(env_abbrv, env_name, steps=15):
     csv_results_dir = Path("csv_results", env_name)
     algs_to_colors = {
         "exp": "green",
         "mbpo": "grey",
         "sysid": "#4bacc6",
         "lamps": "#F79646",
+        "bc": "#8064A2",
     }
     algs_to_labels = {
         "exp": "Demo",
         "mbpo": "MBPO",
         "lamps": "LAMPS",
         "sysid": "SysID",
+        "bc": "BC",
     }
     env_name_to_exp_scores = {
         # SB3 Experts
@@ -78,11 +80,28 @@ def main(env_abbrv, env_name):
         # "hum": 5708.24,
         # "walk": 5740.80,
     }
+    env_name_to_bc_scores = {
+        "div": 30.0,
+        "play": 35.2,
+    }
+    env_name_to_ptremble = {
+        "ant": 0.01,
+        "hc": 0.075,
+        "hop": 0.01,
+        "walk": 0.05,
+        "hum": 0.025,
+        "div": 0.0,
+        "play": 0.0,
+    }
 
-    steps = 150
-    sz = 2000
+    # steps = 150
+    # steps = 100
+    # sz = 1000
+
+    # steps = 10
+    sz = 10_000
     for alg in algs_to_colors.keys():
-        if alg == "exp":
+        if alg == "exp" and env_abbrv in env_name_to_exp_scores.keys():
             plt.plot(
                 np.arange(steps) * sz,
                 np.ones(steps) * env_name_to_exp_scores[env_abbrv],
@@ -90,18 +109,29 @@ def main(env_abbrv, env_name):
                 linestyle="--",
                 label=algs_to_labels[alg],
             )
+        elif alg == "bc" and env_abbrv in env_name_to_bc_scores.keys():
+            plt.plot(
+                np.arange(steps) * sz,
+                np.ones(steps) * env_name_to_bc_scores[env_abbrv],
+                color=algs_to_colors[alg],
+                linestyle="--",
+                label=algs_to_labels[alg],
+            )
         else:
-            if alg == "mbpo":
-                steps = 150
-                sz = 4000
-            else:
-                steps = 30
-                sz = 10000
             csvs = [f for f in csv_results_dir.glob("*.csv") if alg in f.name]
             scores = []
             for csv in csvs:
                 data = pd.read_csv(csv).episode_reward.to_numpy()
-                scores.append(data)
+                shaky = "shaky" in csv.name
+                if len(data) >= steps:
+                    scores.append(data[:steps])
+                else:
+                    # extend last value to steps
+                    print(f"Extending {alg} from {len(data)} to", end=" ")
+                    scores.append(
+                        np.concatenate([data, np.ones(steps - len(data)) * data[-1]])
+                    )
+                    print(f"{len(scores[-1])}")
             if scores == []:
                 print(f"Skipping {alg}")
                 continue
@@ -114,7 +144,7 @@ def main(env_abbrv, env_name):
                 np.arange(steps) * sz,
                 mean,
                 color=algs_to_colors[alg],
-                label=algs_to_labels[alg],
+                label=f"{algs_to_labels[alg]}: {len(scores)} runs",
             )
             plt.fill_between(
                 np.arange(steps) * sz,
@@ -125,12 +155,17 @@ def main(env_abbrv, env_name):
             )
             print(f"Plotting {alg} with {len(scores)} runs")
 
+    if shaky:
+        p_tremble = env_name_to_ptremble[env_abbrv]
+    else:
+        p_tremble = 0
+
     env_name = env_name.replace("gym___", "")
     plt.legend(ncol=2, fontsize=8)
     plt.ylabel("IQM of $J(\\pi)$")
     plt.xlabel("Env. Steps")
     plt.xticks(rotation=45)
-    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(0))
+    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble))
     plt.savefig(f"plots/{env_name}.png", bbox_inches="tight")
     print("SAVED")
 
@@ -141,22 +176,27 @@ if __name__ == "__main__":
         "-e",
         "--env_name",
         type=str,
-        choices=["ant", "hc", "hop", "hum", "walk"],
+        choices=["ant", "hc", "hop", "hum", "walk", "div", "play"],
         help="Name of the environment",
     )
-    parser.add_argument("-o", "--override", action="store_true", default=False)
+    parser.add_argument("-s", "--steps", type=int, help="Number of steps", default=15)
     args = parser.parse_args()
 
     env_abbr = args.env_name
     if env_abbr == "ant":
-        env_name = "Ant-v3"
+        env_name = "ant_truncated_obs"
     elif env_abbr == "hc":
         env_name = "HalfCheetah-v3"
     elif env_abbr == "hop":
         env_name = "Hopper-v3"
     elif env_abbr == "hum":
-        env_name = "Humanoid-v3"
+        env_name = "humanoid_truncated_obs"
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
-    env_name = f"gym___{env_name}"
-    main(env_abbr, env_name)
+    elif env_abbr == "play":
+        env_name = "antmaze-large-play-v2"
+    elif env_abbr == "div":
+        env_name = "antmaze-large-diverse-v2"
+    if "truncated" not in env_name:
+        env_name = f"gym___{env_name}"
+    main(env_abbr, env_name, steps=args.steps)

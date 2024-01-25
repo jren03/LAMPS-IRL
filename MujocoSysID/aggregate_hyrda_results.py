@@ -10,8 +10,11 @@ def is_non_zero_file(fpath):
     return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 
 
-def main(env_name, override, partition, date):
-    algs = ["lamps", "sysid", "mbpo"]
+def main(env_name, override, partition, date, alg_override):
+    if alg_override == "":
+        algs = ["lamps", "sysid", "mbpo"]
+    else:
+        algs = [alg_override]
 
     for alg in algs:
         base_dir = Path("exp", alg, partition, env_name)
@@ -24,11 +27,12 @@ def main(env_name, override, partition, date):
                     f.unlink()
 
         # loop through date/run_id/multi_run_num
-        for subdir in base_dir.glob(f"{date}/*/*"):
+        for subdir in base_dir.glob(f"2024.{date}/*"):
             if not subdir.is_dir():
                 continue
             results_file = Path(subdir, "results.csv")
             if not results_file.exists():
+                print(f"{results_file} does not exist")
                 continue
 
             # Make sure results.csv has 150 entries
@@ -38,7 +42,8 @@ def main(env_name, override, partition, date):
                 print(f"Error reading {results_file}: {e}")
                 continue
 
-            if not is_non_zero_file(results_file) or (len(df) < 75 and len(df) != 30):
+            # if not is_non_zero_file(results_file) or (len(df) < 75 and len(df) != 30):
+            if not is_non_zero_file(results_file):
                 print(f"Skipping {results_file} because it has {len(df)} entries")
                 continue
 
@@ -68,11 +73,12 @@ if __name__ == "__main__":
         "-e",
         "--env_name",
         type=str,
-        choices=["ant", "hc", "hop", "hum", "walk"],
+        choices=["ant", "hc", "hop", "hum", "walk", "div", "play"],
         help="Name of the environment",
     )
-    parser.add_argument("-o", "--override", action="store_true", default=False)
+    parser.add_argument("-o", "--override", action="store_true", default=True)
     parser.add_argument("-p", type=str, default="result")
+    parser.add_argument("-a", type=str, default="")
     parser.add_argument("-d", type=str, required=True)
     args = parser.parse_args()
 
@@ -87,5 +93,9 @@ if __name__ == "__main__":
         env_name = "Humanoid-v3"
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
+    elif env_abbr == "play":
+        env_name = "antmaze-large-play-v2"
+    elif env_abbr == "div":
+        env_name = "antmaze-large-diverse-v2"
     env_name = f"gym___{env_name}"
-    main(env_name, args.override, args.p, args.d)
+    main(env_name, args.override, args.p, args.d, args.a)
