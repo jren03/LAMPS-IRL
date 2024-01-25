@@ -25,6 +25,7 @@ def run(cfg: omegaconf.DictConfig):
 
     env_name = cfg.overrides.env.lower().replace("gym___", "")
     env, term_fn, reward_fn = mbrl.util.env.EnvHandler.make_env(cfg)
+
     env = gym.make(env_name)
     test_env = gym.make(env_name)
 

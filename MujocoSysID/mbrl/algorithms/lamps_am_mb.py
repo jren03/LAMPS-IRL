@@ -144,18 +144,23 @@ def train(
     log_interval = 5
 
     env_name = cfg.overrides.env.lower().replace("gym___", "")
-    expert_dataset, expert_sa_pairs, qpos, qvel, goals = fetch_demos(env_name)
+    expert_dataset, expert_sa_pairs, qpos, qvel, goals = fetch_demos(
+        env_name, zero_out_rewards=cfg.train_discriminator
+    )
     expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
     if "maze" in env_name:
-        env = AntMazeResetWrapper(GoalWrapper(env), qpos, qvel, goals)
+        # env = AntMazeResetWrapper(GoalWrapper(env), qpos, qvel, goals)
+        env = GoalWrapper(env)
     else:
         raise NotImplementedError
 
     env.alpha = alpha
     f_net = Discriminator(env).to(cfg.device)
     f_opt = OAdam(f_net.parameters(), lr=learn_rate)
-    env = RewardWrapper(env, f_net)
+
+    if cfg.train_discriminator:
+        env = RewardWrapper(env, f_net)
 
     env = TremblingHandWrapper(env, p_tremble=0)
     test_env = TremblingHandWrapper(GoalWrapper(test_env), p_tremble=0)
@@ -343,7 +348,10 @@ def train(
                 agent.step(bc=False)
                 updates_made += 1
 
-            if updates_made % cfg.freq_train_discriminator == 0:
+            if (
+                cfg.train_discriminator
+                and updates_made % cfg.freq_train_discriminator == 0
+            ):
                 # agent.learn(total_timesteps=pi_steps, log_interval=1000)
                 # steps += pi_steps
                 # print(f"Training Discriminator at step {env_steps}")
@@ -377,11 +385,16 @@ def train(
                     agent, test_env, n_eval_episodes=25
                 )
                 mean_reward = mean_reward * 100
-                std_reward = std_reward * 100
-                mean_rewards.append(mean_reward)
-                std_rewards.append(std_reward)
-                # env_steps.append(steps)
-                print("{0} Iteration: {1}".format(int(env_steps), mean_reward))
+                try:
+                    logger.log_data(
+                        mbrl.constants.RESULTS_LOG_NAME,
+                        {
+                            "env_step": env_steps,
+                            "episode_reward": mean_reward,
+                        },
+                    )
+                except:
+                    print("{0} Iteration: {1}".format(int(env_steps), mean_reward))
 
             tbar.update(1)
             env_steps += 1

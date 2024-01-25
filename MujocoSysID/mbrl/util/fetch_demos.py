@@ -17,6 +17,7 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
     if possible_data_path.exists():
         print(f"Loading from {possible_data_path}")
         data = np.load(possible_data_path, allow_pickle=True)
+        print(f"{np.mean(data['rewards'])=}")
         return (
             {
                 "observations": data["observations"],
