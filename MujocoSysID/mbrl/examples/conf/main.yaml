@@ -17,6 +17,7 @@ seed: 1
 # JUNTAO HPS
 p_tremble: 0.05 # for walker specifically
 use_d4rl_demos: false
+use_mbrl_demos: false
 
 root_dir: "./exp"
 hydra:
