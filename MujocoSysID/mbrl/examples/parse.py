@@ -2,8 +2,8 @@ from mbrl.util.fetch_demos import fetch_demos
 from pathlib import Path
 import numpy as np
 
-# env_name = "antmaze-large-diverse-v2"
-env_name = "antmaze-large-play-v2"
+env_name = "antmaze-large-diverse-v2"
+# env_name = "antmaze-large-play-v2"
 
 dataset, expert_sa_pairs, qpos, qvel, goals, expert_reset_states = fetch_demos(env_name)
 

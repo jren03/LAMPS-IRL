@@ -144,7 +144,7 @@ def train(
     log_interval = 5
 
     env_name = cfg.overrides.env.lower().replace("gym___", "")
-    expert_dataset, expert_sa_pairs, qpos, qvel, goals = fetch_demos(
+    expert_dataset, expert_sa_pairs, qpos, qvel, goals, _ = fetch_demos(
         env_name, zero_out_rewards=cfg.train_discriminator
     )
     expert_sa_pairs = expert_sa_pairs.to(cfg.device)
@@ -190,8 +190,8 @@ def train(
         "f": f_net,
     }
     agent = TD3_BC(**kwargs)
-    # for _ in range(1):
-    #     agent.learn(total_timesteps=int(1e4), bc=True)
+    for _ in range(1):
+        agent.learn(total_timesteps=int(1e4), bc=True)
     # mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
     # print(100 * mean_reward)
 

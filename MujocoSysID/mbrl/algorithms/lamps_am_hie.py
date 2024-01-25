@@ -90,15 +90,13 @@ def maybe_replace_sac_buffer(
 
 def rollout_model_and_populate_sac_buffer(
     model_env: mbrl.models.ModelEnv,
-    replay_buffer: mbrl.util.ReplayBuffer,
+    initial_obs: np.ndarray,
     agent: SACAgent,
     sac_buffer: mbrl.util.ReplayBuffer,
-    sac_samples_action: bool,
     rollout_horizon: int,
-    batch_size: int,
 ):
-    batch = replay_buffer.sample(batch_size)
-    initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
+    # batch = replay_buffer.sample(batch_size)
+    # initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
     model_state = model_env.reset(
         initial_obs_batch=cast(np.ndarray, initial_obs),
         return_as_np=True,
@@ -106,7 +104,7 @@ def rollout_model_and_populate_sac_buffer(
     accum_dones = np.zeros(initial_obs.shape[0], dtype=bool)
     obs = initial_obs
     for i in range(rollout_horizon):
-        action = agent.act(obs, sample=sac_samples_action, batched=True)
+        action = agent.act(obs, batched=True)
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
         )
@@ -193,8 +191,8 @@ def train(
         "f": f_net,
     }
     agent = TD3_BC(**kwargs)
-    # for _ in range(1):
-    #     agent.learn(total_timesteps=int(1e4), bc=True)
+    for _ in range(1):
+        agent.learn(total_timesteps=int(1e4), bc=True)
     # mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
     # print(100 * mean_reward)
 
@@ -328,17 +326,16 @@ def train(
             replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
 
             if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
-                # mbrl.util.common.train_model_and_save_model_and_data(
-                #     dynamics_model,
-                #     model_trainer,
-                #     cfg.overrides,
-                #     replay_buffer,
-                #     work_dir=work_dir,
-                # )
+                mbrl.util.common.train_model_and_save_model_and_data(
+                    dynamics_model,
+                    model_trainer,
+                    cfg.overrides,
+                    replay_buffer,
+                    work_dir=work_dir,
+                )
 
                 # use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
-                use_expert_data = True
-                rollout_batch_size = 10
+                # use_expert_data = True
                 row_indices = np.random.choice(
                     len(expert_reset_states), size=rollout_batch_size, replace=True
                 )
@@ -360,16 +357,13 @@ def train(
                     )
                 else:
                     raise NotImplementedError
-                breakpoint()
-                # reset_states = expert_reset_states[indices[:, 0], indices[:, 1]]
+                reset_states = expert_reset_states[indices[:, 0], indices[:, 1]]
                 rollout_model_and_populate_sac_buffer(
                     model_env,
-                    expert_replay_buffer if use_expert_data else replay_buffer,
+                    reset_states,
                     agent,
                     sac_buffer,
-                    cfg.algorithm.sac_samples_action,
                     rollout_length,
-                    rollout_batch_size,
                 )
 
             for _ in range(cfg.overrides.num_sac_updates_per_step):

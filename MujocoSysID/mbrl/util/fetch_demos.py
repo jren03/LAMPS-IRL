@@ -110,9 +110,11 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
             ]
         )
 
+        expert_reset_states_square = []
         max_length = max(len(row) for row in expert_reset_states)
         for i in range(len(expert_reset_states)):
             if len(expert_reset_states[i]) == max_length:
+                expert_reset_states_square.append(expert_reset_states[i])
                 continue
             # duplicate each state until we reach max_length
             repeat_times = max_length // len(expert_reset_states[i])
@@ -133,7 +135,9 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
                     expert_reset_states[i], repeat_times, axis=0
                 )
             assert len(expert_reset_states[i]) == max_length
+            expert_reset_states_square.append(expert_reset_states[i])
 
+        expert_reset_states = np.array(expert_reset_states_square)
         expert_sa_pairs = torch.cat(
             (torch.from_numpy(observations), torch.from_numpy(actions)), dim=1
         )
