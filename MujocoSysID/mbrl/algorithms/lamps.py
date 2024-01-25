@@ -154,9 +154,7 @@ def train(
     #         ),
     #         evaluate=True,
     #     )
-    expert_dataset = fetch_demos(
-        cfg.overrides.env,
-    )
+    expert_dataset = fetch_demos(cfg.overrides.env, use_d4rl_demos=cfg.use_d4rl_demos)
 
     work_dir = work_dir or os.getcwd()
     # enable_back_compatible to use pytorch_sac agent
@@ -425,9 +423,9 @@ def train(
                 #     agent.sac_agent.save_checkpoint(
                 #         ckpt_path=os.path.join(work_dir, "sac.pth")
                 #     )
-                epoch += 1
 
             tbar.update(1)
             env_steps += 1
             obs = next_obs
+        epoch += 1
     return np.float32(best_eval_reward)
