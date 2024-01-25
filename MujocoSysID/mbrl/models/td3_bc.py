@@ -164,7 +164,10 @@ class TD3_BC(object):
                 )
             else:
                 state, action, next_state, reward, not_done = learner_batch
-            reward = -self.f(torch.cat([state, action], dim=1)).reshape(reward.shape)
+            if self.f is not None:
+                reward = -self.f(torch.cat([state, action], dim=1)).reshape(
+                    reward.shape
+                )
             (
                 exp_state,
                 exp_action,
@@ -172,9 +175,10 @@ class TD3_BC(object):
                 exp_reward,
                 exp_not_done,
             ) = self.q_replay_buffer.sample(batch_size // 2)
-            exp_reward = -self.f(torch.cat([exp_state, exp_action], dim=1)).reshape(
-                exp_reward.shape
-            )
+            if self.f is not None:
+                exp_reward = -self.f(torch.cat([exp_state, exp_action], dim=1)).reshape(
+                    exp_reward.shape
+                )
             state = torch.cat([state, exp_state], dim=0)
             action = torch.cat([action, exp_action], dim=0)
             next_state = torch.cat([next_state, exp_next_state], dim=0)
@@ -193,11 +197,12 @@ class TD3_BC(object):
                 state, action, next_state, reward, not_done = learner_batch
             pi_data = True
         else:
-            state, action, next_state, _, not_done = self.q_replay_buffer.sample(
+            state, action, next_state, reward, not_done = self.q_replay_buffer.sample(
                 batch_size
             )
             sa = torch.cat([state, action], dim=1)
-            reward = -self.f(sa)
+            if self.f is not None:
+                reward = -self.f(sa).reshape(reward.shape)
             pi_data = False
 
         with torch.no_grad():

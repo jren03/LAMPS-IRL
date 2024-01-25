@@ -172,6 +172,8 @@ def train(
         )
         f_opt = OAdam(f_net.parameters(), lr=learn_rate)
         env = RewardWrapper(env, f_net)
+    else:
+        f_net = None
 
     env = TremblingHandWrapper(env, p_tremble=0)
     test_env = TremblingHandWrapper(GoalWrapper(test_env), p_tremble=0)
