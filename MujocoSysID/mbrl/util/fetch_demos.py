@@ -8,7 +8,10 @@ import numpy as np
 from pathlib import Path
 
 
-data_root = Path("/share/portal/jlr429/pessimistic-irl/expert_data")
+if "guest" in str(Path(Path.cwd())):
+    data_root = Path("/home/guest/dev/juntao/expert_data")
+else:
+    data_root = Path("/share/portal/jlr429/pessimistic-irl/expert_data")
 
 
 def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
