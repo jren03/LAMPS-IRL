@@ -38,11 +38,12 @@ from mbrl.env.gym_wrappers import (
 )
 from mbrl.util.fetch_demos import fetch_demos
 from mbrl.util.am_buffers import QReplayBuffer
-from mbrl.models.arch import Discriminator
+from mbrl.models.arch import Discriminator, DiscriminatorEnsemble
 from mbrl.models.td3_bc import TD3_BC
 from mbrl.util.oadam import OAdam
 from stable_baselines3.common.evaluation import evaluate_policy
 from mbrl.util.nn_utils import gradient_penalty
+from termcolor import cprint
 
 
 def sample(env, policy, trajs, no_regret):
@@ -132,7 +133,7 @@ def train(
     work_dir: Optional[str] = None,
 ):
     alpha = 1
-    learn_rate = 8e-3
+    learn_rate = cfg.disc_lr
     batch_size = 4096
     f_steps = 1
     pi_steps = 5000
@@ -156,10 +157,19 @@ def train(
         raise NotImplementedError
 
     env.alpha = alpha
-    f_net = Discriminator(env).to(cfg.device)
-    f_opt = OAdam(f_net.parameters(), lr=learn_rate)
-
     if cfg.train_discriminator:
+        if cfg.use_ensemble:
+            cprint("Using ensemble", color="green", attrs=["bold"])
+            f_net = DiscriminatorEnsemble(env).to(cfg.device)
+        else:
+            cprint("Not using ensemble", color="green", attrs=["bold"])
+            f_net = Discriminator(env).to(cfg.device)
+        cprint(
+            f"Disc_lr: {learn_rate}, Disc_freq: {cfg.freq_train_discriminator}",
+            color="green",
+            attrs=["bold"],
+        )
+        f_opt = OAdam(f_net.parameters(), lr=learn_rate)
         env = RewardWrapper(env, f_net)
 
     env = TremblingHandWrapper(env, p_tremble=0)

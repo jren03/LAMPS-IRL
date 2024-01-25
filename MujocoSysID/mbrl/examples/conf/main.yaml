@@ -16,6 +16,7 @@ seed: 1
 # JUNTAO params
 freq_eval: 10000
 freq_train_discriminator: 5000
+disc_lr: 8e-3
 
 train_discriminator: true
 use_ensemble: false
