@@ -12,6 +12,7 @@ from termcolor import cprint
 import mbrl.algorithms.lamps_am as lamps_am
 import mbrl.algorithms.lamps_am_mb as lamps_am_mb
 import mbrl.algorithms.lamps_am_mf as lamps_am_mf
+import mbrl.algorithms.lamps_am_hie as lamps_am_hie
 # import mbrl.algorithms.lamps_am_sac_buf as lamps_am_sac_buf
 # import mbrl.algorithms.mm as mm
 
@@ -38,12 +39,16 @@ def run(cfg: omegaconf.DictConfig):
     else:
         cprint("Using ground truth", color="green", attrs=["bold"])
 
+    cprint(f"{cfg.reset_version=}", color="green", attrs=["bold"])
+
     if cfg.algorithm.name == "lamps_am":
         return lamps_am.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     elif cfg.algorithm.name == "lamps_am_mb":
         return lamps_am_mb.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     elif cfg.algorithm.name == "lamps_am_mf":
         return lamps_am_mf.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+    elif cfg.algorithm.name == "lamps_am_hie":
+        return lamps_am_hie.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     else:
         raise NotImplementedError
     # if cfg.algorithm.name == "pets":

@@ -30,6 +30,7 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
             data["qpos"],
             data["qvel"],
             data["goals"],
+            data["expert_reset_states"],
         )
 
     if "maze" in env_name:
@@ -74,7 +75,7 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
         terminals = q_dataset["terminals"]
         actions = q_dataset["actions"]
 
-        dataset = {
+        new_dataset = {
             "observations": observations,
             "actions": actions,
             "next_observations": next_observations,
@@ -91,10 +92,52 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
             goals.append(goals_flat[start : term[i][0] + 1])
             start = term[i][0] + 1
 
+        term = np.argwhere(
+            np.logical_or(dataset["timeouts"] > 0, dataset["terminals"] > 0)
+        )
+        start = 0
+        expert_ranges = []
+        for i in range(len(term)):
+            expert_ranges.append([start, term[i][0] + 1])
+            start = term[i][0] + 1
+        obs_goal_cat = np.concatenate(
+            [dataset["observations"], dataset["infos/goal"]], axis=1
+        )
+        expert_reset_states = np.array(
+            [
+                obs_goal_cat[expert_ranges[i][0] : expert_ranges[i][1]]
+                for i in range(len(expert_ranges))
+            ]
+        )
+
+        max_length = max(len(row) for row in expert_reset_states)
+        for i in range(len(expert_reset_states)):
+            if len(expert_reset_states[i]) == max_length:
+                continue
+            # duplicate each state until we reach max_length
+            repeat_times = max_length // len(expert_reset_states[i])
+            remainder = max_length % len(expert_reset_states[i])
+            if remainder > 0:
+                expert_reset_states[i] = np.concatenate(
+                    (
+                        np.repeat(
+                            expert_reset_states[i][:remainder], repeat_times + 1, axis=0
+                        ),
+                        np.repeat(
+                            expert_reset_states[i][remainder:], repeat_times, axis=0
+                        ),
+                    )
+                )
+            else:
+                expert_reset_states[i] = np.repeat(
+                    expert_reset_states[i], repeat_times, axis=0
+                )
+            assert len(expert_reset_states[i]) == max_length
+
         expert_sa_pairs = torch.cat(
             (torch.from_numpy(observations), torch.from_numpy(actions)), dim=1
         )
     else:
         raise NotImplementedError
 
-    return dataset, expert_sa_pairs, qpos, qvel, goals
+    return new_dataset, expert_sa_pairs, qpos, qvel, goals, expert_reset_states

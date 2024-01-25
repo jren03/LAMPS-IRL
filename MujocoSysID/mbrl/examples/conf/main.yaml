@@ -20,6 +20,10 @@ freq_train_discriminator: 5000
 train_discriminator: true
 use_ensemble: false
 
+reset_version: "range"
+# reset_version_1: false
+# reset_version_2: false
+
 root_dir: "./exp"
 hydra:
   run:
