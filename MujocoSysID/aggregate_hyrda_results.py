@@ -85,7 +85,7 @@ if __name__ == "__main__":
         "-e",
         "--env_name",
         type=str,
-        choices=["ant", "hc", "hop", "hum", "walk"],
+        choices=["ant", "hc", "hop", "hum", "walk", "div", "play"],
         help="Name of the environment",
     )
     parser.add_argument("-o", "--override", action="store_true", default=False)
@@ -104,6 +104,10 @@ if __name__ == "__main__":
         env_name = "humanoid_truncated_obs"
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
+    elif env_abbr == "div":
+        env_name = "antmaze-large-diverse-v2"
+    elif env_abbr == "play":
+        env_name = "antmaze-large-play-v2"
     if "truncated" not in env_name:
         env_name = f"gym___{env_name}"
     main(env_name, args.override, args.p, args.d)
