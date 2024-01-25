@@ -361,6 +361,7 @@ def train(
                 else:
                     raise NotImplementedError
                 breakpoint()
+                # reset_states = expert_reset_states[indices[:, 0], indices[:, 1]]
                 rollout_model_and_populate_sac_buffer(
                     model_env,
                     expert_replay_buffer if use_expert_data else replay_buffer,
