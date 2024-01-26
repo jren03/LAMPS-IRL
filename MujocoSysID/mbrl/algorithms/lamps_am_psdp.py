@@ -74,6 +74,13 @@ def sample(env, policy, trajs, no_regret):
     return torch.from_numpy(np.array(S_curr)), torch.from_numpy(np.array(A_curr)), s
 
 
+def append_timestep_to_obs(obs, timestep):
+    if len(obs.shape) == 1:
+        return np.concatenate((obs, np.array([timestep])))
+    else:
+        return np.concatenate((obs, timestep * np.ones((obs.shape[0], 1))), axis=1)
+
+
 def maybe_replace_sac_buffer(
     sac_buffer: Optional[mbrl.util.ReplayBuffer],
     obs_shape: Sequence[int],
@@ -101,6 +108,7 @@ def psdp_rollout_in_buffer(
     agent: SACAgent,
     sac_buffer: mbrl.util.ReplayBuffer,
     rollout_horizon: int,
+    train_timestep: Optional[int] = None,
 ):
     # batch = replay_buffer.sample(batch_size)
     # initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
@@ -111,6 +119,7 @@ def psdp_rollout_in_buffer(
     accum_dones = np.zeros(initial_obs.shape[0], dtype=bool)
     obs = initial_obs
     for i in range(rollout_horizon):
+        obs = append_timestep_to_obs(obs, train_timestep)
         action = agent.act(obs, batched=True)
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
@@ -118,7 +127,7 @@ def psdp_rollout_in_buffer(
         sac_buffer.add_batch(
             obs[~accum_dones],
             action[~accum_dones],
-            pred_next_obs[~accum_dones],
+            append_timestep_to_obs(pred_next_obs[~accum_dones], train_timestep),
             pred_rewards[~accum_dones, 0],
             pred_dones[~accum_dones, 0],
         )
@@ -134,6 +143,7 @@ def nrpi_rollout_in_buffer(
     sac_samples_action: bool,
     rollout_horizon: int,
     batch_size: int,
+    train_timestep: Optional[int] = None,
 ):
     batch = replay_buffer.sample(batch_size)
     initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
@@ -144,6 +154,7 @@ def nrpi_rollout_in_buffer(
     accum_dones = np.zeros(initial_obs.shape[0], dtype=bool)
     obs = initial_obs
     for i in range(rollout_horizon):
+        obs = append_timestep_to_obs(obs, train_timestep)
         action = agent.act(obs, sample=sac_samples_action, batched=True)
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
@@ -151,7 +162,7 @@ def nrpi_rollout_in_buffer(
         sac_buffer.add_batch(
             obs[~accum_dones],
             action[~accum_dones],
-            pred_next_obs[~accum_dones],
+            append_timestep_to_obs(pred_next_obs[~accum_dones], train_timestep),
             pred_rewards[~accum_dones, 0],
             pred_dones[~accum_dones, 0],
         )
@@ -228,6 +239,7 @@ def train(
     env_steps = []
     log_interval = 5
 
+    cprint("Using True PSDP", color="red", attrs=["bold"])
     if cfg.reset_version == "psdp":
         cprint("Resting to PSDP", color="green", attrs=["bold"])
     elif cfg.reset_version == "nrpi":
@@ -297,7 +309,8 @@ def train(
     pi_replay_buffer = QReplayBuffer(state_dim, action_dim)
 
     kwargs = {
-        "state_dim": state_dim,
+        # ! add timestep
+        "state_dim": state_dim + 1,
         "action_dim": action_dim,
         "max_action": max_action,
         "discount": 0.99,
@@ -318,9 +331,8 @@ def train(
     if cfg.ema:
         ema_agent = EMA(agent)
 
-    if cfg.bc_init:
-        for _ in range(1):
-            agent.learn(total_timesteps=int(1e4), bc=True)
+    for _ in range(1):
+        agent.learn(total_timesteps=int(1e4), bc=True)
     # mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
     # print(100 * mean_reward)
 
@@ -465,6 +477,9 @@ def train(
                     work_dir=work_dir,
                 )
 
+                train_timestep = (
+                    int(env_steps / cfg.overrides.num_step) * cfg.overrides.epoch_length
+                )
                 if cfg.reset_version == "nrpi":
                     # always reset to some expert state
                     nrpi_rollout_in_buffer(
@@ -475,6 +490,7 @@ def train(
                         cfg.algorithm.sac_samples_action,
                         rollout_length,
                         rollout_batch_size,
+                        train_timestep=train_timestep,
                     )
                 else:
                     row_indices = np.random.choice(
@@ -546,6 +562,7 @@ def train(
                         agent,
                         sac_buffer,
                         rollout_length,
+                        train_timestep=train_timestep,
                     )
 
             for _ in range(cfg.overrides.num_sac_updates_per_step):
@@ -587,11 +604,10 @@ def train(
                 disc_steps += 1
 
             if env_steps % cfg.freq_eval == 0 and env_steps != 0:
-                # breakpoint()
                 if cfg.ema:
-                    eval_agent = ema_agent
-                else:
                     eval_agent = agent
+                else:
+                    eval_agent = ema_agent
                 mean_reward, _ = evaluate_policy(
                     eval_agent, test_env, n_eval_episodes=25
                 )

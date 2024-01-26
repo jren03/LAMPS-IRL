@@ -13,6 +13,7 @@ import mbrl.algorithms.lamps_am as lamps_am
 import mbrl.algorithms.lamps_am_mb as lamps_am_mb
 import mbrl.algorithms.lamps_am_mf as lamps_am_mf
 import mbrl.algorithms.lamps_am_hie as lamps_am_hie
+import mbrl.algorithms.lamps_am_psdp as lamps_am_psdp
 # import mbrl.algorithms.lamps_am_sac_buf as lamps_am_sac_buf
 # import mbrl.algorithms.mm as mm
 
@@ -45,6 +46,8 @@ def run(cfg: omegaconf.DictConfig):
 
     if cfg.algorithm.name == "lamps_am":
         return lamps_am.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+    if cfg.algorithm.name == "lamps_am_psdp":
+        return lamps_am_psdp.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     elif cfg.algorithm.name == "lamps_am_mf":
         return lamps_am_mf.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     elif cfg.algorithm.name == "lamps_am_mb":

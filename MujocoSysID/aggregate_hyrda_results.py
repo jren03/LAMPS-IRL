@@ -32,7 +32,6 @@ def main(env_name, override, partition, date, alg_override):
                 continue
             results_file = Path(subdir, "results.csv")
             if not results_file.exists():
-                print(f"{results_file} does not exist")
                 continue
 
             # Make sure results.csv has 150 entries
@@ -56,11 +55,15 @@ def main(env_name, override, partition, date, alg_override):
                 try:
                     hydra_yml = yaml.safe_load(stream)
                     seed = hydra_yml.get("seed")
+                    reset_version = hydra_yml.get("reset_version")
                 except yaml.YAMLError as exc:
                     print(exc)
 
             # Copy the csv file to the csv_results directory
-            new_file_path = Path(csv_results_dir, f"{alg}_s{seed}.csv")
+            new_file_path = Path(
+                csv_results_dir,
+                f"{alg}_s{seed}_{reset_version}_l{len(df)}.csv",
+            )
             if new_file_path.exists():
                 continue
             shutil.copy(results_file, new_file_path)
@@ -78,7 +81,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("-o", "--override", action="store_true", default=True)
     parser.add_argument("-p", type=str, default="result")
-    parser.add_argument("-a", type=str, default="")
+    parser.add_argument("-a", type=str, default="lamps_am_psdp")
     parser.add_argument("-d", type=str, required=True)
     args = parser.parse_args()
 

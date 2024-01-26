@@ -20,20 +20,19 @@ disc_lr: 8e-3
 
 train_discriminator: true
 use_ensemble: false
+bc_init: true
 
 # choose from nrpi, psdp, sw, range
 reset_version: "psdp"
-
 # if true, half = true
 bc_learner: true
-
 # use ema of actor weights to evaluate
 ema: false
 
 root_dir: "./exp"
 hydra:
   run:
-    dir: ${root_dir}/${algorithm.name}/${experiment}/${overrides.env}/${now:%Y.%m.%d}/${now:%H%M%S}
+    dir: ${root_dir}/${algorithm.name}/${experiment}/${overrides.env}/${now:%m.%d}/${now:%H%M%S}-seed${seed}
 
   sweep:
-    dir: ${root_dir}/${algorithm.name}/${experiment}/${overrides.env}/${now:%Y.%m.%d}/${now:%H%M%S}
+    dir: ${root_dir}/${algorithm.name}/${experiment}/${overrides.env}/${now:%m.%d}/${now:%H%M%S}-seed${seed}
