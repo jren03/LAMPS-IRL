@@ -184,7 +184,7 @@ def fetch_demos(env_name, cfg=None):
 
         expert_reset_states = np.array(expert_reset_states_square)
         expert_sa_pairs = torch.cat(
-            (torch.from_numpy(observations), torch.from_numpy(actions)), dim=1
+            (torch.from_numpy(new_observations), torch.from_numpy(actions)), dim=1
         )
     else:
         raise NotImplementedError

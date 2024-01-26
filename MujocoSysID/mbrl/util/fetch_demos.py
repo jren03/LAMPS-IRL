@@ -25,24 +25,18 @@ def fetch_demos(env_name, cfg):
     if possible_data_path.exists():
         print(f"Loading from {possible_data_path}")
         data = np.load(possible_data_path, allow_pickle=True)
-        print(f"{np.mean(data['rewards'])=}")
-        # dataset = {
-        #     "observations": data["observations"],
-        #     "actions": data["actions"],
-        #     "next_observations": data["next_observations"],
-        #     "rewards": data["rewards"],
-        #     "terminals": data["terminals"],
-        # }
-        # if cfg.train_discriminator:
-        #     dataset["rewards"] = np.zeros_like(data["rewards"])
+        dataset = {
+            "observations": data["observations"],
+            "actions": data["actions"],
+            "next_observations": data["next_observations"],
+            "rewards": data["rewards"],
+            "terminals": data["terminals"],
+        }
+        if cfg.train_discriminator:
+            dataset["rewards"] = np.zeros_like(data["rewards"])
+        print(f"{np.mean(dataset['rewards'])=}")
         return (
-            {
-                "observations": data["observations"],
-                "actions": data["actions"],
-                "next_observations": data["next_observations"],
-                "rewards": data["rewards"],
-                "terminals": data["terminals"],
-            },
+            dataset,
             torch.from_numpy(data["expert_sa_pairs"]),
             data["qpos"],
             data["qvel"],

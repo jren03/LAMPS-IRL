@@ -298,6 +298,8 @@ def train(
     if "maze" in env_name:
         # env = AntMazeResetWrapper(GoalWrapper(env), qpos, qvel, goals)
         env = GoalWrapper(env)
+        if cfg.psdp_wrapper:
+            env = PSDPWrapper(env)
     else:
         raise NotImplementedError
 
@@ -451,6 +453,8 @@ def train(
         weight_decay=cfg.overrides.model_wd,
         logger=None if silent else logger,
     )
+
+    breakpoint()
 
     mbrl.util.common.rollout_agent_trajectories(
         env,

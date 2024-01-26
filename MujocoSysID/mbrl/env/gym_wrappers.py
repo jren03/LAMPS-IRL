@@ -91,7 +91,7 @@ class PSDPWrapper(gym.Wrapper):
         self.env = env
         self.t = 0
         self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=env.observation_space.shape[0] + 1
+            low=-np.inf, high=np.inf, shape=(env.observation_space.shape[0] + 1,)
         )
         cprint(f"PSDPWrapper: {self.t=}", attrs=["bold"])
 
