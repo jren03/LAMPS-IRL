@@ -26,8 +26,6 @@ from mbrl.planning.sac_wrapper import SACAgent
 
 from tqdm import tqdm
 
-from mbrl.util.fetch_demos import fetch_demos
-
 import torch.nn as nn
 
 from mbrl.env.gym_wrappers import (
@@ -38,6 +36,7 @@ from mbrl.env.gym_wrappers import (
     PSDPWrapper,
 )
 from mbrl.util.fetch_demos import fetch_demos
+from mbrl.util.psdp_fetch_demos import fetch_demos as psdp_fetch_demos
 from mbrl.util.am_buffers import QReplayBuffer
 from mbrl.models.arch import Discriminator, DiscriminatorEnsemble
 from mbrl.models.td3_bc import TD3_BC
@@ -276,14 +275,24 @@ def train(
         raise NotImplementedError
 
     env_name = cfg.overrides.env.lower().replace("gym___", "")
-    (
-        expert_dataset,
-        expert_sa_pairs,
-        qpos,
-        qvel,
-        goals,
-        expert_reset_states,
-    ) = fetch_demos(env_name, cfg)
+    if cfg.psdp_wrapper:
+        (
+            expert_dataset,
+            expert_sa_pairs,
+            qpos,
+            qvel,
+            goals,
+            expert_reset_states,
+        ) = psdp_fetch_demos(env_name, cfg)
+    else:
+        (
+            expert_dataset,
+            expert_sa_pairs,
+            qpos,
+            qvel,
+            goals,
+            expert_reset_states,
+        ) = fetch_demos(env_name, cfg)
     expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
     if "maze" in env_name:
