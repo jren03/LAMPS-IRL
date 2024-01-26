@@ -504,14 +504,16 @@ def train(
                 )
             except Exception as e:
                 print(f"Lost Connection: {e}")
-                try:
-                    env.close()
-                except:
-                    env = None
-                env = create_env(env_name, cfg.psdp_wrapper, f_net)
-                obs, done = env.reset(), False
-                steps_epoch = 0
-                continue
+                # possibly due to nan params in actor
+                breakpoint()
+                # try:
+                #     env.close()
+                # except:
+                #     env = None
+                # env = create_env(env_name, cfg.psdp_wrapper, f_net)
+                # obs, done = env.reset(), False
+                # steps_epoch = 0
+                # continue
 
             (
                 exp_obs,
