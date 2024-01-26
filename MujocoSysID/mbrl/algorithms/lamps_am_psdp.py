@@ -276,7 +276,6 @@ def train(
     env_name = cfg.overrides.env.lower().replace("gym___", "")
     (
         expert_dataset,
-        q_dataset,
         expert_sa_pairs,
         qpos,
         qvel,
