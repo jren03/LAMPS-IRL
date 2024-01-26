@@ -6,7 +6,7 @@ from typing import Callable, Union, Type, Optional, Dict, Any
 from torch.autograd import Variable
 from itertools import repeat
 from torch.autograd import grad as torch_grad
-from termcolors import cprint
+from termcolor import cprint
 
 
 def gradient_penalty(learner_sa, expert_sa, f, device="cuda"):

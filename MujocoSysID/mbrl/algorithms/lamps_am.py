@@ -54,8 +54,6 @@ def sample(env, policy, trajs, no_regret):
     S_curr = []
     A_curr = []
     total_trajs = 0
-    alpha = env.alpha
-    env.alpha = 0
     s = 0
     while total_trajs < trajs:
         obs = env.reset()
@@ -69,8 +67,27 @@ def sample(env, policy, trajs, no_regret):
             if done:
                 total_trajs += 1
                 break
-    env.alpha = alpha
     return torch.from_numpy(np.array(S_curr)), torch.from_numpy(np.array(A_curr)), s
+
+
+def evaluate(
+    env: gym.Env,
+    agent: SACAgent,
+    num_episodes: int,
+) -> float:
+    avg_episode_reward = 0
+    for episode in range(num_episodes):
+        obs = env.reset()
+        done = False
+        episode_reward = 0
+        while not done:
+            action = agent.act(obs)
+            obs, reward, done, _ = env.step(action)
+            if torch.is_tensor(reward):
+                reward = reward.cpu().detach().item()
+            episode_reward += reward
+        avg_episode_reward += episode_reward
+    return avg_episode_reward / num_episodes
 
 
 def maybe_replace_sac_buffer(
@@ -265,16 +282,15 @@ def train(
         qvel,
         goals,
         expert_reset_states,
-    ) = fetch_demos(env_name, zero_out_rewards=cfg.train_discriminator)
+    ) = fetch_demos(env_name, cfg)
     expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
-    # if "maze" in env_name:
-    #     # env = AntMazeResetWrapper(GoalWrapper(env), qpos, qvel, goals)
-    #     env = GoalWrapper(env)
-    # else:
-    #     raise NotImplementedError
+    if "maze" in env_name:
+        # env = AntMazeResetWrapper(GoalWrapper(env), qpos, qvel, goals)
+        env = GoalWrapper(env)
+    else:
+        raise NotImplementedError
 
-    env.alpha = alpha
     if cfg.train_discriminator:
         if cfg.use_ensemble:
             cprint("Using ensemble", color="green", attrs=["bold"])
@@ -288,7 +304,7 @@ def train(
             attrs=["bold"],
         )
         f_opt = OAdam(f_net.parameters(), lr=learn_rate)
-        env = RewardWrapper(env, f_net)
+        # env = RewardWrapper(env, f_net)
     else:
         f_net = None
 
@@ -296,7 +312,7 @@ def train(
     env = create_env(env_name, cfg.psdp_wrapper, f_net)
     test_env = create_env(env_name, cfg.psdp_wrapper, f_net=None)
     mixed_reset_env = AntMazeResetWrapper(
-        GoalWrapper(gym.make(cfg.overrides.env.lower().replace("gym___", ""))),
+        GoalWrapper(gym.make(env_name)),
         qpos,
         qvel,
         goals,
@@ -337,8 +353,6 @@ def train(
     agent = TD3_BC(**kwargs)
     if cfg.ema:
         ema_agent = EMA(agent)
-
-    breakpoint()
 
     if cfg.bc_init:
         for _ in range(1):
@@ -427,6 +441,7 @@ def train(
         weight_decay=cfg.overrides.model_wd,
         logger=None if silent else logger,
     )
+
     mbrl.util.common.rollout_agent_trajectories(
         env,
         cfg.algorithm.initial_exploration_steps,
@@ -603,7 +618,9 @@ def train(
                     learning_rate_used = learn_rate
                 f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
 
-                S_curr, A_curr, s = sample(env, agent, num_traj_sample, no_regret=False)
+                S_curr, A_curr, s = sample(
+                    test_env, agent, num_traj_sample, no_regret=False
+                )
                 learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
 
                 for _ in range(f_steps):
@@ -633,14 +650,12 @@ def train(
                 )
                 mean_reward = mean_reward * 100
                 try:
+                    real_env_eval_mean = evaluate(env, eval_agent, num_episodes=15)
                     true_reset_eval_mean, _ = eval_agent_in_model(
-                        model_env, env, f_net, eval_agent, 5, cfg
+                        model_env, test_env, f_net, eval_agent, 5, cfg
                     )
                     mixed_reset_eval_mean, _ = eval_agent_in_model(
                         model_env, mixed_reset_env, f_net, eval_agent, 5, cfg
-                    )
-                    real_env_eval_mean, _ = evaluate_policy(
-                        eval_agent, env, n_eval_episodes=15
                     )
                     logger.log_data(
                         mbrl.constants.RESULTS_LOG_NAME,

@@ -14,9 +14,14 @@ else:
     data_root = Path("/share/portal/jlr429/pessimistic-irl/expert_data")
 
 
-def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
+def fetch_demos(env_name, cfg):
     env_name = env_name.replace("gym___", "")
-    possible_data_path = Path(data_root, f"{env_name}_demos.npz")
+
+    if cfg.psdp_wrapper:
+        possible_data_path = Path(data_root, f"{env_name}_psdp_demos.npz")
+    else:
+        possible_data_path = Path(data_root, f"{env_name}_demos.npz")
+
     if possible_data_path.exists():
         print(f"Loading from {possible_data_path}")
         data = np.load(possible_data_path, allow_pickle=True)
@@ -39,6 +44,15 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
     if "maze" in env_name:
         env = gym.make(env_name)
         dataset = env.get_dataset()
+
+        term = np.argwhere(
+            np.logical_or(dataset["timeouts"] > 0, dataset["terminals"] > 0)
+        )
+        start = 0
+        expert_ranges = []
+        for i in range(len(term)):
+            expert_ranges.append([start, term[i][0] + 1])
+            start = term[i][0] + 1
         q_dataset = d4rl.qlearning_dataset(env)
 
         curr_obs_pt = 0
@@ -95,14 +109,6 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
             goals.append(goals_flat[start : term[i][0] + 1])
             start = term[i][0] + 1
 
-        term = np.argwhere(
-            np.logical_or(dataset["timeouts"] > 0, dataset["terminals"] > 0)
-        )
-        start = 0
-        expert_ranges = []
-        for i in range(len(term)):
-            expert_ranges.append([start, term[i][0] + 1])
-            start = term[i][0] + 1
         obs_goal_cat = np.concatenate(
             [dataset["observations"], dataset["infos/goal"]], axis=1
         )
