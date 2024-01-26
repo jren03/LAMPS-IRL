@@ -18,7 +18,7 @@ def fetch_demos(env_name, cfg=None):
     env_name = env_name.replace("gym___", "")
 
     possible_data_path = Path(data_root, f"{env_name}_psdp_demos.npz")
-    if possible_data_path.exists():
+    if cfg is not None and possible_data_path.exists():
         print(f"Loading from {possible_data_path}")
         data = np.load(possible_data_path, allow_pickle=True)
         dataset = {

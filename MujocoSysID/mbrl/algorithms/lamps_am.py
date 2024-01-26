@@ -181,10 +181,10 @@ def create_env(env_name, psdp_wrapper: bool = False, f_net: Optional[nn.Module] 
         env = GoalWrapper(env)
     else:
         raise NotImplementedError
-    if f_net is not None:
-        env = RewardWrapper(env, f_net)
     if psdp_wrapper:
         env = PSDPWrapper(env)
+    if f_net is not None:
+        env = RewardWrapper(env, f_net)
     return env
 
 
@@ -453,8 +453,6 @@ def train(
         weight_decay=cfg.overrides.model_wd,
         logger=None if silent else logger,
     )
-
-    breakpoint()
 
     mbrl.util.common.rollout_agent_trajectories(
         env,
