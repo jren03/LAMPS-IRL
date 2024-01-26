@@ -5,7 +5,7 @@ term_fn: "no_termination"
 expert_dir: "expert/ant"
 
 policy_exp_ratio: 0
-model_exp_ratio: 0
+model_exp_ratio: 1.0
 expert_size: 10000
 
 

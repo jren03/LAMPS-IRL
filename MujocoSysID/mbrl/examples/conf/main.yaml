@@ -21,7 +21,7 @@ disc_lr: 8e-3
 train_discriminator: true
 use_ensemble: false
 
-reset_version: "range"
+reset_version: "psdp"
 # reset_version_1: false
 # reset_version_2: false
 

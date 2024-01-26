@@ -29,6 +29,7 @@ from mbrl.util.fetch_demos import fetch_demos
 MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("epoch", "E", "int"),
     ("rollout_length", "RL", "int"),
+    ("in_model_eval", "IME", "float"),
 ]
 
 import d4rl

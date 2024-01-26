@@ -8,6 +8,7 @@ from typing import Optional, Sequence, cast
 
 import gym
 import hydra.utils
+from networkx import minimum_node_cut
 import numpy as np
 import omegaconf
 import torch
@@ -27,6 +28,7 @@ from tqdm import tqdm
 
 from mbrl.util.fetch_demos import fetch_demos
 
+import torch.nn as nn
 import d4rl
 
 from mbrl.env.gym_wrappers import (
@@ -37,11 +39,12 @@ from mbrl.env.gym_wrappers import (
 )
 from mbrl.util.fetch_demos import fetch_demos
 from mbrl.util.am_buffers import QReplayBuffer
-from mbrl.models.arch import Discriminator
+from mbrl.models.arch import Discriminator, DiscriminatorEnsemble
 from mbrl.models.td3_bc import TD3_BC
 from mbrl.util.oadam import OAdam
 from stable_baselines3.common.evaluation import evaluate_policy
 from mbrl.util.nn_utils import gradient_penalty
+from termcolor import cprint
 
 
 def sample(env, policy, trajs, no_regret):
@@ -68,6 +71,130 @@ def sample(env, policy, trajs, no_regret):
     return torch.from_numpy(np.array(S_curr)), torch.from_numpy(np.array(A_curr)), s
 
 
+def maybe_replace_sac_buffer(
+    sac_buffer: Optional[mbrl.util.ReplayBuffer],
+    obs_shape: Sequence[int],
+    act_shape: Sequence[int],
+    new_capacity: int,
+    seed: int,
+) -> mbrl.util.ReplayBuffer:
+    if sac_buffer is None or new_capacity != sac_buffer.capacity:
+        if sac_buffer is None:
+            rng = np.random.default_rng(seed=seed)
+        else:
+            rng = sac_buffer.rng
+        new_buffer = mbrl.util.ReplayBuffer(new_capacity, obs_shape, act_shape, rng=rng)
+        if sac_buffer is None:
+            return new_buffer
+        obs, action, next_obs, reward, done = sac_buffer.get_all().astuple()
+        new_buffer.add_batch(obs, action, next_obs, reward, done)
+        return new_buffer
+    return sac_buffer
+
+
+def psdp_rollout_in_buffer(
+    model_env: mbrl.models.ModelEnv,
+    initial_obs: np.ndarray,
+    agent: SACAgent,
+    sac_buffer: mbrl.util.ReplayBuffer,
+    rollout_horizon: int,
+):
+    # batch = replay_buffer.sample(batch_size)
+    # initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
+    model_state = model_env.reset(
+        initial_obs_batch=cast(np.ndarray, initial_obs),
+        return_as_np=True,
+    )
+    accum_dones = np.zeros(initial_obs.shape[0], dtype=bool)
+    obs = initial_obs
+    for i in range(rollout_horizon):
+        action = agent.act(obs, batched=True)
+        pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
+            action, model_state, sample=True
+        )
+        sac_buffer.add_batch(
+            obs[~accum_dones],
+            action[~accum_dones],
+            pred_next_obs[~accum_dones],
+            pred_rewards[~accum_dones, 0],
+            pred_dones[~accum_dones, 0],
+        )
+        obs = pred_next_obs
+        accum_dones |= pred_dones.squeeze()
+
+
+def nrpi_rollout_in_buffer(
+    model_env: mbrl.models.ModelEnv,
+    replay_buffer: mbrl.util.ReplayBuffer,
+    agent: SACAgent,
+    sac_buffer: mbrl.util.ReplayBuffer,
+    sac_samples_action: bool,
+    rollout_horizon: int,
+    batch_size: int,
+):
+    batch = replay_buffer.sample(batch_size)
+    initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
+    model_state = model_env.reset(
+        initial_obs_batch=cast(np.ndarray, initial_obs),
+        return_as_np=True,
+    )
+    accum_dones = np.zeros(initial_obs.shape[0], dtype=bool)
+    obs = initial_obs
+    for i in range(rollout_horizon):
+        action = agent.act(obs, sample=sac_samples_action, batched=True)
+        pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
+            action, model_state, sample=True
+        )
+        sac_buffer.add_batch(
+            obs[~accum_dones],
+            action[~accum_dones],
+            pred_next_obs[~accum_dones],
+            pred_rewards[~accum_dones, 0],
+            pred_dones[~accum_dones, 0],
+        )
+        obs = pred_next_obs
+        accum_dones |= pred_dones.squeeze()
+
+
+def eval_agent_in_model(
+    model_env: mbrl.models.ModelEnv,
+    test_env: gym.Env,
+    f_net: nn.Module,
+    agent: SACAgent,
+    num_episodes: int,
+    cfg: omegaconf.DictConfig,
+):
+    action_repeat_times = model_env.dynamics_model.model.num_members
+    rewards = torch.zeros(num_episodes, action_repeat_times).to(cfg.device)
+    for episode in range(num_episodes):
+        initial_obs = test_env.reset().reshape(1, -1)
+        model_state = model_env.reset(initial_obs_batch=initial_obs, return_as_np=True)
+        model_state["obs"] = model_state["obs"].repeat((7, 1))
+        done = False
+        obs = initial_obs
+        while not done:
+            action = agent.act(obs, batched=True)
+            # repeat action model_env.dynamics_model.model.num_members times
+            action = np.repeat(action, action_repeat_times, axis=0)
+            obs, _, done, model_state = model_env.step(
+                action, model_state, sample=False
+            )
+            reward = -f_net(
+                torch.cat(
+                    (
+                        torch.from_numpy(obs),
+                        torch.from_numpy(action),
+                    ),
+                    dim=1,
+                )
+                .float()
+                .to(cfg.device)
+            )
+            rewards[episode] += reward
+            breakpoint()
+    return torch.mean(rewards), torch.std(rewards)
+
+
 def train(
     env: gym.Env,
     test_env: gym.Env,
@@ -77,7 +204,7 @@ def train(
     work_dir: Optional[str] = None,
 ):
     alpha = 1
-    learn_rate = 8e-3
+    learn_rate = cfg.disc_lr
     batch_size = 4096
     f_steps = 1
     pi_steps = 5000
@@ -88,29 +215,56 @@ def train(
     env_steps = []
     log_interval = 5
 
-    env_name = cfg.overrides.env.lower().replace("gym___", "")
-    cur_env = gym.make(env_name)
-
-    expert_dataset, expert_sa_pairs, qpos, qvel, goals = fetch_demos(env_name)
-    expert_sa_pairs = expert_sa_pairs.to(cfg.device)
-
-    if "maze" in env_name:
-        cur_env = AntMazeResetWrapper(GoalWrapper(cur_env), qpos, qvel, goals)
+    if cfg.reset_version == "psdp":
+        cprint("Resting to PSDP", color="green", attrs=["bold"])
+        nrpi_reset = False
+    elif cfg.reset_version == "nrpi":
+        cprint("Resting to NRPI", color="green", attrs=["bold"])
+        nrpi_reset = True
     else:
         raise NotImplementedError
 
-    cur_env.alpha = alpha
-    f_net = Discriminator(cur_env).to(cfg.device)
-    f_opt = OAdam(f_net.parameters(), lr=learn_rate)
-    cur_env = RewardWrapper(cur_env, f_net)
+    env_name = cfg.overrides.env.lower().replace("gym___", "")
+    (
+        expert_dataset,
+        expert_sa_pairs,
+        qpos,
+        qvel,
+        goals,
+        expert_reset_states,
+    ) = fetch_demos(env_name, zero_out_rewards=cfg.train_discriminator)
+    expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
-    cur_env = TremblingHandWrapper(cur_env, p_tremble=0)
-    eval_env = TremblingHandWrapper(GoalWrapper(gym.make(env_name)), p_tremble=0)
+    if "maze" in env_name:
+        # env = AntMazeResetWrapper(GoalWrapper(env), qpos, qvel, goals)
+        env = GoalWrapper(env)
+    else:
+        raise NotImplementedError
 
-    state_dim = cur_env.observation_space.shape[0]
-    action_dim = cur_env.action_space.shape[0]
-    max_action = float(cur_env.action_space.high[0])
+    env.alpha = alpha
+    if cfg.train_discriminator:
+        if cfg.use_ensemble:
+            cprint("Using ensemble", color="green", attrs=["bold"])
+            f_net = DiscriminatorEnsemble(env).to(cfg.device)
+        else:
+            cprint("Not using ensemble", color="green", attrs=["bold"])
+            f_net = Discriminator(env).to(cfg.device)
+        cprint(
+            f"Disc_lr: {learn_rate}, Disc_freq: {cfg.freq_train_discriminator}",
+            color="green",
+            attrs=["bold"],
+        )
+        f_opt = OAdam(f_net.parameters(), lr=learn_rate)
+        env = RewardWrapper(env, f_net)
+    else:
+        f_net = None
 
+    env = TremblingHandWrapper(env, p_tremble=0)
+    test_env = TremblingHandWrapper(GoalWrapper(test_env), p_tremble=0)
+
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.shape[0]
+    max_action = float(env.action_space.high[0])
     q_replay_buffer = QReplayBuffer(state_dim, action_dim)
     q_replay_buffer.add_d4rl_dataset(expert_dataset)
     pi_replay_buffer = QReplayBuffer(state_dim, action_dim)
@@ -129,54 +283,244 @@ def train(
         "alpha": 2.5,
         "q_replay_buffer": q_replay_buffer,
         "pi_replay_buffer": pi_replay_buffer,
-        "env": cur_env,
+        "env": env,
         "f": f_net,
     }
-    pi = TD3_BC(**kwargs)
-    for _ in range(1):
-        pi.learn(total_timesteps=int(1e4), bc=True)
-        mean_reward, std_reward = evaluate_policy(pi, eval_env, n_eval_episodes=25)
-        print(100 * mean_reward)
+    agent = TD3_BC(**kwargs)
+    # for _ in range(1):
+    #     agent.learn(total_timesteps=int(1e4), bc=True)
+    # mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
+    # print(100 * mean_reward)
 
-    pi.actor.optimizer = OAdam(pi.actor.parameters())
-    pi.critic.optimizer = OAdam(pi.critic.parameters())
+    agent.actor.optimizer = OAdam(agent.actor.parameters())
+    agent.critic.optimizer = OAdam(agent.critic.parameters())
 
-    steps = 0
+    # ---------------------------------- LAMPS START ------------------------------------
+    work_dir = work_dir or os.getcwd()
+    MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT
+    logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)
+    logger.register_group(
+        mbrl.constants.RESULTS_LOG_NAME,
+        MBPO_LOG_FORMAT,
+        color="green",
+        dump_frequency=1,
+    )
+    obs_shape = env.observation_space.shape
+    act_shape = env.action_space.shape
+    rng = np.random.default_rng(seed=cfg.seed)
+    torch_generator = torch.Generator(device=cfg.device)
+    if cfg.seed is not None:
+        torch_generator.manual_seed(cfg.seed)
+    dynamics_model = mbrl.util.common.create_one_dim_tr_model(cfg, obs_shape, act_shape)
+    use_double_dtype = cfg.algorithm.get("normalize_double_precision", False)
+    dtype = np.double if use_double_dtype else np.float32
+    replay_buffer = mbrl.util.common.create_replay_buffer(
+        cfg,
+        obs_shape,
+        act_shape,
+        rng=rng,
+        obs_type=dtype,
+        action_type=dtype,
+        reward_type=dtype,
+    )
+    policy_buffer = mbrl.util.common.create_replay_buffer(
+        cfg,
+        obs_shape,
+        act_shape,
+        rng=rng,
+        obs_type=dtype,
+        action_type=dtype,
+        reward_type=dtype,
+    )
+    replay_buffer.add_batch(
+        expert_dataset["observations"][: cfg.algorithm.initial_exploration_steps],
+        expert_dataset["actions"][: cfg.algorithm.initial_exploration_steps],
+        expert_dataset["next_observations"][: cfg.algorithm.initial_exploration_steps],
+        expert_dataset["rewards"][: cfg.algorithm.initial_exploration_steps],
+        expert_dataset["terminals"][: cfg.algorithm.initial_exploration_steps],
+    )
+    expert_replay_buffer = mbrl.util.replay_buffer.ReplayBuffer(
+        capacity=int(1e6),
+        obs_shape=obs_shape,
+        action_shape=act_shape,
+        rng=rng,
+    )
+    expert_replay_buffer.add_batch(
+        expert_dataset["observations"],
+        expert_dataset["actions"],
+        expert_dataset["next_observations"],
+        expert_dataset["rewards"],
+        expert_dataset["terminals"],
+    )
+    rollout_batch_size = (
+        cfg.overrides.effective_model_rollouts_per_step * cfg.algorithm.freq_train_model
+    )
+    trains_per_epoch = int(
+        np.ceil(cfg.overrides.epoch_length / cfg.overrides.freq_train_model)
+    )
+    updates_made = 0
+    env_steps = 0
+    model_env = mbrl.models.ModelEnv(
+        env, dynamics_model, termination_fn, None, generator=torch_generator
+    )
+    model_trainer = mbrl.models.ModelTrainer(
+        dynamics_model,
+        optim_lr=cfg.overrides.model_lr,
+        weight_decay=cfg.overrides.model_wd,
+        logger=None if silent else logger,
+    )
+    mbrl.util.common.rollout_agent_trajectories(
+        env,
+        cfg.algorithm.initial_exploration_steps,
+        agent,
+        {},
+        replay_buffer=replay_buffer,
+        additional_buffer=policy_buffer,
+    )
+    sac_buffer = None
+    # ---------------------------------- LAMPS END ------------------------------------
+
+    eval_mean, eval_stdev = eval_agent_in_model(
+        model_env, test_env, f_net, agent, 25, cfg
+    )
+    print(f"Initial eval: {eval_mean}, {eval_stdev}")
+    exit()
+
+    # ---------------------------------- ORIGINAL FILTER LOOP --------------------------
+    env_steps = 0
+    disc_steps = 0
     print(f"Training {env_name}")
-    for outer in range(outer_steps):
-        if not outer == 0:
-            learning_rate_used = learn_rate / outer
-        else:
-            learning_rate_used = learn_rate
-        f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
+    tbar = tqdm(range(cfg.overrides.num_steps), ncols=0, mininterval=10)
+    epoch = 0
+    while env_steps < cfg.overrides.num_steps:
+        rollout_length = int(
+            mbrl.util.math.truncated_linear(
+                *(cfg.overrides.rollout_schedule + [epoch + 1])
+            )
+        )
+        sac_buffer_capacity = rollout_length * rollout_batch_size * trains_per_epoch
+        sac_buffer_capacity *= cfg.overrides.num_epochs_to_retain_sac_buffer
+        sac_buffer = maybe_replace_sac_buffer(
+            sac_buffer, obs_shape, act_shape, sac_buffer_capacity, cfg.seed
+        )
+        agent.pi_replay_buffer = sac_buffer
+        obs, done = None, False
+        # for step in range(pi_steps):
+        for epoch in range(cfg.overrides.epoch_length):
+            if epoch == 0 or done:
+                obs, done = env.reset(), False
+            next_obs, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
+                env,
+                obs,
+                agent,
+                {},
+                replay_buffer=agent.pi_replay_buffer,
+                additional_buffer=replay_buffer,
+            )
 
-        pi.learn(total_timesteps=pi_steps, log_interval=1000)
-        steps += pi_steps
+            (
+                exp_obs,
+                exp_next_obs,
+                exp_act,
+                exp_reward,
+                exp_done,
+            ) = expert_replay_buffer.sample_one()
+            replay_buffer.add(exp_obs, exp_act, exp_next_obs, exp_reward, exp_done)
 
-        S_curr, A_curr, s = sample(cur_env, pi, num_traj_sample, no_regret=False)
-        steps += s
-        learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
+            if (env_steps + 1) % int(cfg.overrides.freq_train_model / 2) == 0:
+                mbrl.util.common.train_model_and_save_model_and_data(
+                    dynamics_model,
+                    model_trainer,
+                    cfg.overrides,
+                    replay_buffer,
+                    work_dir=work_dir,
+                )
 
-        for _ in range(f_steps):
-            learner_sa = learner_sa_pairs[
-                np.random.choice(len(learner_sa_pairs), batch_size)
-            ]
-            expert_sa = expert_sa_pairs[
-                np.random.choice(len(expert_sa_pairs), batch_size)
-            ]
-            f_opt.zero_grad()
-            f_learner = f_net(learner_sa.float())
-            f_expert = f_net(expert_sa.float())
-            gp = gradient_penalty(learner_sa, expert_sa, f_net)
-            loss = f_expert.mean() - f_learner.mean() + 10 * gp
-            loss.backward()
-            f_opt.step()
+                if nrpi_reset:
+                    use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
+                    nrpi_rollout_in_buffer(
+                        model_env,
+                        expert_replay_buffer if use_expert_data else replay_buffer,
+                        agent,
+                        sac_buffer,
+                        cfg.algorithm.sac_samples_action,
+                        rollout_length,
+                        rollout_batch_size,
+                    )
+                else:
+                    row_indices = np.random.choice(
+                        len(expert_reset_states), size=rollout_batch_size, replace=True
+                    )
+                    col = int(
+                        env_steps / cfg.overrides.num_steps * cfg.overrides.epoch_length
+                    )
+                    indices = np.stack(
+                        (row_indices, col * np.ones_like(row_indices)), axis=-1
+                    )
+                    reset_states = expert_reset_states[indices[:, 0], indices[:, 1]]
+                    psdp_rollout_in_buffer(
+                        model_env,
+                        reset_states,
+                        agent,
+                        sac_buffer,
+                        rollout_length,
+                    )
 
-        if outer % log_interval == 0:
-            mean_reward, std_reward = evaluate_policy(pi, eval_env, n_eval_episodes=25)
-            mean_reward = mean_reward * 100
-            std_reward = std_reward * 100
-            mean_rewards.append(mean_reward)
-            std_rewards.append(std_reward)
-            env_steps.append(steps)
-            print("{0} Iteration: {1}".format(int(outer), mean_reward))
+            for _ in range(cfg.overrides.num_sac_updates_per_step):
+                agent.step(bc=False)
+                updates_made += 1
+
+            if (
+                cfg.train_discriminator
+                and updates_made % cfg.freq_train_discriminator == 0
+            ):
+                # agent.learn(total_timesteps=pi_steps, log_interval=1000)
+                # steps += pi_steps
+                # print(f"Training Discriminator at step {env_steps}")
+                if not disc_steps == 0:
+                    learning_rate_used = learn_rate / disc_steps
+                else:
+                    learning_rate_used = learn_rate
+                f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
+
+                S_curr, A_curr, s = sample(env, agent, num_traj_sample, no_regret=False)
+                learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
+
+                for _ in range(f_steps):
+                    learner_sa = learner_sa_pairs[
+                        np.random.choice(len(learner_sa_pairs), batch_size)
+                    ]
+                    expert_sa = expert_sa_pairs[
+                        np.random.choice(len(expert_sa_pairs), batch_size)
+                    ]
+                    f_opt.zero_grad()
+                    f_learner = f_net(learner_sa.float())
+                    f_expert = f_net(expert_sa.float())
+                    gp = gradient_penalty(learner_sa, expert_sa, f_net)
+                    loss = f_expert.mean() - f_learner.mean() + 10 * gp
+                    loss.backward()
+                    f_opt.step()
+                disc_steps += 1
+
+            if env_steps % cfg.freq_eval == 0 and env_steps != 0:
+                mean_reward, std_reward = evaluate_policy(
+                    agent, test_env, n_eval_episodes=25
+                )
+                mean_reward = mean_reward * 100
+                try:
+                    logger.log_data(
+                        mbrl.constants.RESULTS_LOG_NAME,
+                        {
+                            "env_step": env_steps,
+                            "episode_reward": mean_reward,
+                        },
+                    )
+                except:
+                    print("{0} Iteration: {1}".format(int(env_steps), mean_reward))
+
+            tbar.update(1)
+            env_steps += 1
+            obs = next_obs
+
+        epoch += 1
+    # ----------------------------- ORIGINAL FILTER LOOP END --------------------------
