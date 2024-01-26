@@ -23,20 +23,17 @@ import mbrl.util
 import mbrl.util.common
 import mbrl.util.math
 from mbrl.planning.sac_wrapper import SACAgent
-from mbrl.third_party.pytorch_sac import VideoRecorder
 
 from tqdm import tqdm
 
-from mbrl.util.fetch_demos import fetch_demos
-
 import torch.nn as nn
-import d4rl
 
 from mbrl.env.gym_wrappers import (
     AntMazeResetWrapper,
     GoalWrapper,
     RewardWrapper,
     TremblingHandWrapper,
+    PSDPWrapper,
 )
 from mbrl.util.fetch_demos import fetch_demos
 from mbrl.util.am_buffers import QReplayBuffer
@@ -55,8 +52,6 @@ def sample(env, policy, trajs, no_regret):
     S_curr = []
     A_curr = []
     total_trajs = 0
-    alpha = env.alpha
-    env.alpha = 0
     s = 0
     while total_trajs < trajs:
         obs = env.reset()
@@ -70,15 +65,28 @@ def sample(env, policy, trajs, no_regret):
             if done:
                 total_trajs += 1
                 break
-    env.alpha = alpha
     return torch.from_numpy(np.array(S_curr)), torch.from_numpy(np.array(A_curr)), s
 
 
-def append_timestep_to_obs(obs, timestep):
-    if len(obs.shape) == 1:
-        return np.concatenate((obs, np.array([timestep])))
-    else:
-        return np.concatenate((obs, timestep * np.ones((obs.shape[0], 1))), axis=1)
+def evaluate(
+    env: gym.Env,
+    agent: SACAgent,
+    num_episodes: int,
+) -> float:
+    avg_episode_reward = 0
+    for episode in range(num_episodes):
+        obs = env.reset()
+        done = False
+        episode_reward = 0
+        while not done:
+            action = agent.act(obs)
+            obs, reward, done, _ = env.step(action)
+            if torch.is_tensor(reward):
+                reward = reward.cpu().detach().item()
+            episode_reward += reward
+        avg_episode_reward += episode_reward
+    avg_episode_reward /= 1000
+    return avg_episode_reward / num_episodes
 
 
 def maybe_replace_sac_buffer(
@@ -108,7 +116,6 @@ def psdp_rollout_in_buffer(
     agent: SACAgent,
     sac_buffer: mbrl.util.ReplayBuffer,
     rollout_horizon: int,
-    train_timestep: Optional[int] = None,
 ):
     # batch = replay_buffer.sample(batch_size)
     # initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
@@ -119,7 +126,6 @@ def psdp_rollout_in_buffer(
     accum_dones = np.zeros(initial_obs.shape[0], dtype=bool)
     obs = initial_obs
     for i in range(rollout_horizon):
-        obs = append_timestep_to_obs(obs, train_timestep)
         action = agent.act(obs, batched=True)
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
@@ -127,7 +133,7 @@ def psdp_rollout_in_buffer(
         sac_buffer.add_batch(
             obs[~accum_dones],
             action[~accum_dones],
-            append_timestep_to_obs(pred_next_obs[~accum_dones], train_timestep),
+            pred_next_obs[~accum_dones],
             pred_rewards[~accum_dones, 0],
             pred_dones[~accum_dones, 0],
         )
@@ -143,7 +149,6 @@ def nrpi_rollout_in_buffer(
     sac_samples_action: bool,
     rollout_horizon: int,
     batch_size: int,
-    train_timestep: Optional[int] = None,
 ):
     batch = replay_buffer.sample(batch_size)
     initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
@@ -154,7 +159,6 @@ def nrpi_rollout_in_buffer(
     accum_dones = np.zeros(initial_obs.shape[0], dtype=bool)
     obs = initial_obs
     for i in range(rollout_horizon):
-        obs = append_timestep_to_obs(obs, train_timestep)
         action = agent.act(obs, sample=sac_samples_action, batched=True)
         pred_next_obs, pred_rewards, pred_dones, model_state = model_env.step(
             action, model_state, sample=True
@@ -162,12 +166,25 @@ def nrpi_rollout_in_buffer(
         sac_buffer.add_batch(
             obs[~accum_dones],
             action[~accum_dones],
-            append_timestep_to_obs(pred_next_obs[~accum_dones], train_timestep),
+            pred_next_obs[~accum_dones],
             pred_rewards[~accum_dones, 0],
             pred_dones[~accum_dones, 0],
         )
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
+
+
+def create_env(env_name, psdp_wrapper: bool = False, f_net: Optional[nn.Module] = None):
+    env = gym.make(env_name)
+    if "maze" in env_name:
+        env = GoalWrapper(env)
+    else:
+        raise NotImplementedError
+    if f_net is not None:
+        env = RewardWrapper(env, f_net)
+    if psdp_wrapper:
+        env = PSDPWrapper(env)
+    return env
 
 
 def eval_agent_in_model(
@@ -216,7 +233,9 @@ def eval_agent_in_model(
             )
             rewards[episode] += reward
             step += 1
-    return torch.mean(rewards).item(), torch.std(rewards).item()
+    rewards /= cfg.overrides.epoch_length
+    rewards_mean = torch.mean(torch.mean(rewards, dim=1), dim=0).item()
+    return rewards_mean, None
 
 
 def train(
@@ -239,7 +258,6 @@ def train(
     env_steps = []
     log_interval = 5
 
-    cprint("Using True PSDP", color="red", attrs=["bold"])
     if cfg.reset_version == "psdp":
         cprint("Resting to PSDP", color="green", attrs=["bold"])
     elif cfg.reset_version == "nrpi":
@@ -258,12 +276,13 @@ def train(
     env_name = cfg.overrides.env.lower().replace("gym___", "")
     (
         expert_dataset,
+        q_dataset,
         expert_sa_pairs,
         qpos,
         qvel,
         goals,
         expert_reset_states,
-    ) = fetch_demos(env_name, zero_out_rewards=cfg.train_discriminator)
+    ) = fetch_demos(env_name, cfg)
     expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
     if "maze" in env_name:
@@ -272,45 +291,49 @@ def train(
     else:
         raise NotImplementedError
 
-    mixed_reset_env = AntMazeResetWrapper(
-        GoalWrapper(gym.make(cfg.overrides.env.lower().replace("gym___", ""))),
-        qpos,
-        qvel,
-        goals,
-        alpha=0.5,
-    )
-
-    env.alpha = alpha
     if cfg.train_discriminator:
         if cfg.use_ensemble:
             cprint("Using ensemble", color="green", attrs=["bold"])
-            f_net = DiscriminatorEnsemble(env).to(cfg.device)
+            f_net = DiscriminatorEnsemble(env, tanh_disc=cfg.tanh_disc).to(cfg.device)
         else:
             cprint("Not using ensemble", color="green", attrs=["bold"])
-            f_net = Discriminator(env).to(cfg.device)
+            f_net = Discriminator(env, tanh_disc=cfg.tanh_disc).to(cfg.device)
         cprint(
             f"Disc_lr: {learn_rate}, Disc_freq: {cfg.freq_train_discriminator}",
             color="green",
             attrs=["bold"],
         )
         f_opt = OAdam(f_net.parameters(), lr=learn_rate)
-        env = RewardWrapper(env, f_net)
+        # env = RewardWrapper(env, f_net)
     else:
         f_net = None
 
-    env = TremblingHandWrapper(env, p_tremble=0)
-    test_env = TremblingHandWrapper(GoalWrapper(test_env), p_tremble=0)
+    # ---------------------------- Initialize Envs ------------------------------
+    env = create_env(env_name, cfg.psdp_wrapper, f_net)
+    test_env = create_env(env_name, cfg.psdp_wrapper, f_net=None)
+    mixed_reset_env = AntMazeResetWrapper(
+        GoalWrapper(gym.make(env_name)),
+        qpos,
+        qvel,
+        goals,
+        alpha=0.5,
+    )
+
+    # env = TremblingHandWrapper(env, p_tremble=0)
+    # test_env = TremblingHandWrapper(GoalWrapper(test_env), p_tremble=0)
+    # if cfg.psdp_wrapper:
+    #     env = PSDPWrapper(env)
+    #     test_env = PSDPWrapper(test_env)
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     max_action = float(env.action_space.high[0])
     q_replay_buffer = QReplayBuffer(state_dim, action_dim)
-    q_replay_buffer.add_d4rl_dataset(expert_dataset)
+    q_replay_buffer.add_d4rl_dataset(q_dataset)
     pi_replay_buffer = QReplayBuffer(state_dim, action_dim)
 
     kwargs = {
-        # ! add timestep
-        "state_dim": state_dim + 1,
+        "state_dim": state_dim,
         "action_dim": action_dim,
         "max_action": max_action,
         "discount": 0.99,
@@ -331,8 +354,9 @@ def train(
     if cfg.ema:
         ema_agent = EMA(agent)
 
-    for _ in range(1):
-        agent.learn(total_timesteps=int(1e4), bc=True)
+    if cfg.bc_init:
+        for _ in range(1):
+            agent.learn(total_timesteps=int(1e4), bc=True)
     # mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
     # print(100 * mean_reward)
 
@@ -344,6 +368,7 @@ def train(
     MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
         ("true_reset_eval_mean", "TR", "float"),
         ("mixed_reset_eval_mean", "MR", "float"),
+        ("real_env_eval_mean", "RE", "float"),
     ]
     logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)
     logger.register_group(
@@ -416,6 +441,7 @@ def train(
         weight_decay=cfg.overrides.model_wd,
         logger=None if silent else logger,
     )
+
     mbrl.util.common.rollout_agent_trajectories(
         env,
         cfg.algorithm.initial_exploration_steps,
@@ -447,17 +473,30 @@ def train(
         agent.pi_replay_buffer = sac_buffer
         obs, done = None, False
         # for step in range(pi_steps):
-        for epoch in range(cfg.overrides.epoch_length):
-            if epoch == 0 or done:
+        # for epoch in range(cfg.overrides.epoch_length):
+        steps_epoch = 0
+        while steps_epoch < cfg.overrides.epoch_length:
+            if steps_epoch == 0 or done:
                 obs, done = env.reset(), False
-            next_obs, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
-                env,
-                obs,
-                agent,
-                {},
-                replay_buffer=agent.pi_replay_buffer,
-                additional_buffer=replay_buffer,
-            )
+            try:
+                next_obs, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
+                    env,
+                    obs,
+                    agent,
+                    {},
+                    replay_buffer=agent.pi_replay_buffer,
+                    additional_buffer=replay_buffer,
+                )
+            except Exception as e:
+                print(f"Lost Connection: {e}")
+                try:
+                    env.close()
+                except:
+                    env = None
+                env = create_env(env_name, cfg.psdp_wrapper, f_net)
+                obs, done = env.reset(), False
+                steps_epoch = 0
+                continue
 
             (
                 exp_obs,
@@ -477,9 +516,6 @@ def train(
                     work_dir=work_dir,
                 )
 
-                train_timestep = (
-                    int(env_steps / cfg.overrides.num_step) * cfg.overrides.epoch_length
-                )
                 if cfg.reset_version == "nrpi":
                     # always reset to some expert state
                     nrpi_rollout_in_buffer(
@@ -490,7 +526,6 @@ def train(
                         cfg.algorithm.sac_samples_action,
                         rollout_length,
                         rollout_batch_size,
-                        train_timestep=train_timestep,
                     )
                 else:
                     row_indices = np.random.choice(
@@ -562,7 +597,6 @@ def train(
                         agent,
                         sac_buffer,
                         rollout_length,
-                        train_timestep=train_timestep,
                     )
 
             for _ in range(cfg.overrides.num_sac_updates_per_step):
@@ -584,7 +618,9 @@ def train(
                     learning_rate_used = learn_rate
                 f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
 
-                S_curr, A_curr, s = sample(env, agent, num_traj_sample, no_regret=False)
+                S_curr, A_curr, s = sample(
+                    test_env, agent, num_traj_sample, no_regret=False
+                )
                 learner_sa_pairs = torch.cat((S_curr, A_curr), dim=1).to(cfg.device)
 
                 for _ in range(f_steps):
@@ -604,15 +640,17 @@ def train(
                 disc_steps += 1
 
             if env_steps % cfg.freq_eval == 0 and env_steps != 0:
+                # breakpoint()
                 if cfg.ema:
-                    eval_agent = agent
-                else:
                     eval_agent = ema_agent
+                else:
+                    eval_agent = agent
                 mean_reward, _ = evaluate_policy(
-                    eval_agent, test_env, n_eval_episodes=25
+                    eval_agent, test_env, n_eval_episodes=15
                 )
                 mean_reward = mean_reward * 100
                 try:
+                    real_env_eval_mean = evaluate(env, eval_agent, num_episodes=15)
                     true_reset_eval_mean, _ = eval_agent_in_model(
                         model_env, test_env, f_net, eval_agent, 5, cfg
                     )
@@ -626,6 +664,7 @@ def train(
                             "episode_reward": mean_reward,
                             "true_reset_eval_mean": true_reset_eval_mean,
                             "mixed_reset_eval_mean": mixed_reset_eval_mean,
+                            "real_env_eval_mean": real_env_eval_mean,
                         },
                     )
                 except:
@@ -636,12 +675,14 @@ def train(
                             "episode_reward": mean_reward,
                             "true_reset_eval_mean": 0.0,
                             "mixed_reset_eval_mean": 0.0,
+                            "real_env_eval_mean": 0.0,
                         },
                     )
                     print("{0} Iteration: {1}".format(int(env_steps), mean_reward))
 
             tbar.update(1)
             env_steps += 1
+            steps_epoch += 1
             obs = next_obs
 
         epoch += 1

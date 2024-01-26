@@ -50,8 +50,8 @@ def run(cfg: omegaconf.DictConfig):
         return lamps_am.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     # elif cfg.algorithm.name == "lamps_am_mb":
     #     return lamps_am_mb.train(env, test_env, term_fn, cfg, silent=cfg.silent)
-    # if cfg.algorithm.name == "lamps_am_psdp":
-    #     return lamps_am_psdp.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+    if cfg.algorithm.name == "lamps_am_psdp":
+        return lamps_am_psdp.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     # elif cfg.algorithm.name == "lamps_am_mf":
     #     return lamps_am_mf.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     # elif cfg.algorithm.name == "lamps_am_hie":

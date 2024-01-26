@@ -26,8 +26,6 @@ from mbrl.planning.sac_wrapper import SACAgent
 
 from tqdm import tqdm
 
-from mbrl.util.fetch_demos import fetch_demos
-
 import torch.nn as nn
 
 from mbrl.env.gym_wrappers import (
@@ -278,6 +276,7 @@ def train(
     env_name = cfg.overrides.env.lower().replace("gym___", "")
     (
         expert_dataset,
+        q_dataset,
         expert_sa_pairs,
         qpos,
         qvel,
@@ -330,7 +329,7 @@ def train(
     action_dim = env.action_space.shape[0]
     max_action = float(env.action_space.high[0])
     q_replay_buffer = QReplayBuffer(state_dim, action_dim)
-    q_replay_buffer.add_d4rl_dataset(expert_dataset)
+    q_replay_buffer.add_d4rl_dataset(q_dataset)
     pi_replay_buffer = QReplayBuffer(state_dim, action_dim)
 
     kwargs = {
