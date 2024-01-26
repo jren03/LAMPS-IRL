@@ -24,11 +24,13 @@ class RunningNormalizer:
 
     def observe(self, x):
         x = x.float()
-        self.n += 1.0
-        last_mean = self.mean.clone()
-        self.mean += (x - last_mean) / self.n
-        self.mean_diff += (x - last_mean) * (x - self.mean)
-        self.var = (self.mean_diff / self.n).clamp(min=1e-2)
+        batch_size = x.shape[0]
+        delta = x - self.mean
+        self.n.add_(batch_size)
+        self.mean.add_(delta.sum(dim=0) / self.n)
+        delta2 = x - self.mean
+        self.mean_diff.add_((delta * delta2).sum(dim=0))
+        self.var.copy_((self.mean_diff / self.n).clamp(min=1e-2))
 
     def normalize(self, inputs):
         obs_std = torch.sqrt(self.var)
