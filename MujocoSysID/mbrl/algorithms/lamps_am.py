@@ -47,6 +47,8 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from mbrl.util.nn_utils import gradient_penalty
 from termcolor import cprint
 
+from mbrl.util.ema_pytorch import EMA
+
 
 def sample(env, policy, trajs, no_regret):
     # rollout trajectories using a policy and add to replay buffer
@@ -230,10 +232,14 @@ def train(
         cprint("Resting to PSDP", color="green", attrs=["bold"])
     elif cfg.reset_version == "nrpi":
         cprint("Resting to NRPI", color="green", attrs=["bold"])
-    elif cfg.reset_version == "sw":
-        cprint("Resting to sliding window", color="green", attrs=["bold"])
-    elif cfg.reset_version == "range":
-        cprint("Resting with range from end", color="green", attrs=["bold"])
+    elif cfg.reset_version == "backward_sw":
+        cprint("Resting to sliding window backwards", color="green", attrs=["bold"])
+    elif cfg.reset_version == "forward_sw":
+        cprint("Resting to sliding window fowards", color="green", attrs=["bold"])
+    elif cfg.reset_version == "backward_range":
+        cprint("Resting with range from backwards", color="green", attrs=["bold"])
+    elif cfg.reset_version == "forward_range":
+        cprint("Resting with range from beginning", color="green", attrs=["bold"])
     else:
         raise NotImplementedError
 
@@ -306,10 +312,14 @@ def train(
         "pi_replay_buffer": pi_replay_buffer,
         "env": env,
         "f": f_net,
+        "half": cfg.bc_learner,
     }
     agent = TD3_BC(**kwargs)
-    # for _ in range(1):
-    #     agent.learn(total_timesteps=int(1e4), bc=True)
+    if cfg.ema:
+        ema_agent = EMA(agent)
+
+    for _ in range(1):
+        agent.learn(total_timesteps=int(1e4), bc=True)
     # mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
     # print(100 * mean_reward)
 
@@ -454,11 +464,11 @@ def train(
                     work_dir=work_dir,
                 )
 
-                if nrpi_reset:
-                    use_expert_data = rng.random() < cfg.overrides.model_exp_ratio
+                if cfg.reset_version == "nrpi":
+                    # always reset to some expert state
                     nrpi_rollout_in_buffer(
                         model_env,
-                        expert_replay_buffer if use_expert_data else replay_buffer,
+                        expert_replay_buffer,
                         agent,
                         sac_buffer,
                         cfg.algorithm.sac_samples_action,
@@ -469,12 +479,65 @@ def train(
                     row_indices = np.random.choice(
                         len(expert_reset_states), size=rollout_batch_size, replace=True
                     )
-                    col = int(
-                        env_steps / cfg.overrides.num_steps * cfg.overrides.epoch_length
-                    )
-                    indices = np.stack(
-                        (row_indices, col * np.ones_like(row_indices)), axis=-1
-                    )
+                    if cfg.reset_version == "psdp":
+                        # reset to i*T/N
+                        col = int(
+                            env_steps
+                            / cfg.overrides.num_steps
+                            * cfg.overrides.epoch_length
+                        )
+                        indices = np.stack(
+                            (row_indices, col * np.ones_like(row_indices)), axis=-1
+                        )
+                    elif cfg.reset_version == "backward_sw":
+                        # reset to [-i/n * T, (i/n + 0.05) * T]
+                        percent_remaining = 1 - env_steps / cfg.overrides.num_steps
+                        low = int(percent_remaining * cfg.overrides.epoch_length)
+                        high = min(
+                            cfg.overrides.epoch_length,
+                            int((percent_remaining + 0.1) * cfg.overrides.epoch_length),
+                        )
+                        column_indices = np.random.randint(
+                            low, high, size=len(row_indices)
+                        )
+                        indices = np.stack((row_indices, column_indices), axis=-1)
+                    elif cfg.reset_version == "backward_range":
+                        # reset to [-i/N * T, N]
+                        low = int(
+                            cfg.overrides.epoch_length
+                            * (1 - env_steps / cfg.overrides.num_steps)
+                        )
+                        high = cfg.overrides.epoch_length
+                        column_indices = np.random.randint(
+                            low, high, size=len(row_indices)
+                        )
+                        indices = np.stack((row_indices, column_indices), axis=-1)
+                    elif cfg.reset_version == "forward_sw":
+                        # reset to [i/n * T, (i/n + 0.1) * T]
+                        percent_completed = env_steps / cfg.overrides.num_steps
+                        low = int(percent_completed * cfg.overrides.epoch_length)
+                        high = int(
+                            (percent_completed + 0.1) * cfg.overrides.epoch_length
+                        )
+                        high = min(cfg.overrides.epoch_length, high)
+                        column_indices = np.random.randint(
+                            low, high, size=len(row_indices)
+                        )
+                        indices = np.stack((row_indices, column_indices), axis=-1)
+                    elif cfg.reset_version == "forward_range":
+                        # reset to [0, i/N * T]
+                        low = 0
+                        high = max(
+                            int(
+                                cfg.overrides.epoch_length
+                                * (env_steps / cfg.overrides.num_steps)
+                            ),
+                            100,
+                        )
+                        column_indices = np.random.randint(
+                            low, high, size=len(row_indices)
+                        )
+                        indices = np.stack((row_indices, column_indices), axis=-1)
                     reset_states = expert_reset_states[indices[:, 0], indices[:, 1]]
                     psdp_rollout_in_buffer(
                         model_env,
@@ -487,6 +550,8 @@ def train(
             for _ in range(cfg.overrides.num_sac_updates_per_step):
                 agent.step(bc=False)
                 updates_made += 1
+                if cfg.ema:
+                    ema_agent.update()
 
             if (
                 cfg.train_discriminator
@@ -521,14 +586,20 @@ def train(
                 disc_steps += 1
 
             if env_steps % cfg.freq_eval == 0 and env_steps != 0:
-                mean_reward, _ = evaluate_policy(agent, test_env, n_eval_episodes=25)
+                if cfg.ema:
+                    eval_agent = agent
+                else:
+                    eval_agent = ema_agent
+                mean_reward, _ = evaluate_policy(
+                    eval_agent, test_env, n_eval_episodes=25
+                )
                 mean_reward = mean_reward * 100
                 try:
                     true_reset_eval_mean, _ = eval_agent_in_model(
-                        model_env, test_env, f_net, agent, 5, cfg
+                        model_env, test_env, f_net, eval_agent, 5, cfg
                     )
                     mixed_reset_eval_mean, _ = eval_agent_in_model(
-                        model_env, mixed_reset_env, f_net, agent, 5, cfg
+                        model_env, mixed_reset_env, f_net, eval_agent, 5, cfg
                     )
                     logger.log_data(
                         mbrl.constants.RESULTS_LOG_NAME,

@@ -24,8 +24,11 @@ use_ensemble: false
 # choose from nrpi, psdp, sw, range
 reset_version: "psdp"
 
-# reset_version_1: false
-# reset_version_2: false
+# if true, half = true
+bc_learner: true
+
+# use ema of actor weights to evaluate
+ema: false
 
 root_dir: "./exp"
 hydra:

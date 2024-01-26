@@ -66,7 +66,7 @@ class Critic(nn.Module):
         return q1
 
 
-class TD3_BC(object):
+class TD3_BC(nn.Module):
     def __init__(
         self,
         state_dim,
@@ -82,7 +82,9 @@ class TD3_BC(object):
         pi_replay_buffer=None,
         env=None,
         f=None,
+        half=True,
     ):
+        super(TD3_BC, self).__init__()
         self.actor = Actor(state_dim, action_dim, max_action).to(device)
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = OAdam(self.actor.parameters(), lr=3e-4)
@@ -103,7 +105,7 @@ class TD3_BC(object):
         self.env = env
         self.f = f
 
-        self.half = True
+        self.half = half
 
         self.total_it = 0
 
@@ -185,12 +187,12 @@ class TD3_BC(object):
             reward = torch.cat([reward, exp_reward], dim=0)
             not_done = torch.cat([not_done, exp_not_done], dim=0)
             pi_data = False
-        elif self.pi_replay_buffer.size > 1e4 and (
+        elif len(self.pi_replay_buffer) > 1e4 and (
             np.random.uniform() > 0.5 or (not bc)
         ):
             learner_batch = self.pi_replay_buffer.sample(batch_size)
             if isinstance(self.pi_replay_buffer, ReplayBuffer):
-                state, action, next_state, reward, done = self.split_mbrl_batch(
+                state, action, next_state, reward, not_done = self.split_mbrl_batch(
                     learner_batch
                 )
             else:

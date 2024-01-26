@@ -39,7 +39,10 @@ def run(cfg: omegaconf.DictConfig):
     else:
         cprint("Using ground truth", color="green", attrs=["bold"])
 
-    cprint(f"seed:{cfg.seed}", color="green", attrs=["bold"])
+    cprint(f"seed: {cfg.seed}", color="green", attrs=["bold"])
+    cprint(f"bc_learner: {cfg.bc_learner}", color="green", attrs=["bold"])
+    cprint(f"ema: {cfg.ema}", color="green", attrs=["bold"])
+
     if cfg.algorithm.name == "lamps_am":
         return lamps_am.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     elif cfg.algorithm.name == "lamps_am_mf":

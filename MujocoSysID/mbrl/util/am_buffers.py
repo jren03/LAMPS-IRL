@@ -53,6 +53,9 @@ class QReplayBuffer(object):
             return x.cpu().detach().numpy()
         return x
 
+    def __len__(self):
+        return self.size
+
     def add(self, state, action, next_state, reward, done):
         self.state[self.ptr] = self._convert_if_tensor(state)
         self.action[self.ptr] = self._convert_if_tensor(action)
