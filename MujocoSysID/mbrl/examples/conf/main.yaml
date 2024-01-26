@@ -29,7 +29,9 @@ bc_learner: true
 # use ema of actor weights to evaluate
 ema: false
 # append timestep to observation_space
-actual_psdp: false
+psdp_wrapper: false
+# tanh the discriminator output
+tanh_disc: false
 
 root_dir: "./exp"
 hydra:

@@ -93,6 +93,7 @@ class PSDPWrapper(gym.Wrapper):
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=env.observation_space.shape[0] + 1
         )
+        cprint(f"PSDPWrapper: {self.t=}", attrs=["bold"])
 
     def reset(self):
         obs = self.env.reset()

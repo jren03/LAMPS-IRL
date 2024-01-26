@@ -43,17 +43,19 @@ def run(cfg: omegaconf.DictConfig):
     cprint(f"seed: {cfg.seed}", color="green", attrs=["bold"])
     cprint(f"bc_learner: {cfg.bc_learner}", color="green", attrs=["bold"])
     cprint(f"ema: {cfg.ema}", color="green", attrs=["bold"])
+    cprint(f"psdp_wrapper: {cfg.psdp_wrapper}", color="green", attrs=["bold"])
+    cprint(f"tanh_disc: {cfg.tanh_disc}", color="green", attrs=["bold"])
 
     if cfg.algorithm.name == "lamps_am":
         return lamps_am.train(env, test_env, term_fn, cfg, silent=cfg.silent)
-    if cfg.algorithm.name == "lamps_am_psdp":
-        return lamps_am_psdp.train(env, test_env, term_fn, cfg, silent=cfg.silent)
-    elif cfg.algorithm.name == "lamps_am_mf":
-        return lamps_am_mf.train(env, test_env, term_fn, cfg, silent=cfg.silent)
-    elif cfg.algorithm.name == "lamps_am_mb":
-        return lamps_am_mb.train(env, test_env, term_fn, cfg, silent=cfg.silent)
-    elif cfg.algorithm.name == "lamps_am_hie":
-        return lamps_am_hie.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+    # elif cfg.algorithm.name == "lamps_am_mb":
+    #     return lamps_am_mb.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+    # if cfg.algorithm.name == "lamps_am_psdp":
+    #     return lamps_am_psdp.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+    # elif cfg.algorithm.name == "lamps_am_mf":
+    #     return lamps_am_mf.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+    # elif cfg.algorithm.name == "lamps_am_hie":
+    #     return lamps_am_hie.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     else:
         raise NotImplementedError
     # if cfg.algorithm.name == "pets":

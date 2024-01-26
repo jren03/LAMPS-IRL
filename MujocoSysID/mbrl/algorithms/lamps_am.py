@@ -23,20 +23,19 @@ import mbrl.util
 import mbrl.util.common
 import mbrl.util.math
 from mbrl.planning.sac_wrapper import SACAgent
-from mbrl.third_party.pytorch_sac import VideoRecorder
 
 from tqdm import tqdm
 
 from mbrl.util.fetch_demos import fetch_demos
 
 import torch.nn as nn
-import d4rl
 
 from mbrl.env.gym_wrappers import (
     AntMazeResetWrapper,
     GoalWrapper,
     RewardWrapper,
     TremblingHandWrapper,
+    PSDPWrapper,
 )
 from mbrl.util.fetch_demos import fetch_demos
 from mbrl.util.am_buffers import QReplayBuffer
@@ -159,6 +158,19 @@ def nrpi_rollout_in_buffer(
         accum_dones |= pred_dones.squeeze()
 
 
+def create_env(env_name, psdp_wrapper: bool = False, f_net: Optional[nn.Module] = None):
+    env = gym.make(env_name)
+    if "maze" in env_name:
+        env = GoalWrapper(env)
+    else:
+        raise NotImplementedError
+    if f_net is not None:
+        env = RewardWrapper(env, f_net)
+    if psdp_wrapper:
+        env = PSDPWrapper(env)
+    return env
+
+
 def eval_agent_in_model(
     model_env: mbrl.models.ModelEnv,
     test_env: gym.Env,
@@ -204,7 +216,6 @@ def eval_agent_in_model(
                 reward,
             )
             rewards[episode] += reward
-            breakpoint()
             step += 1
     rewards /= cfg.overrides.epoch_length
     rewards_mean = torch.mean(torch.mean(rewards, dim=1), dim=0).item()
@@ -257,28 +268,20 @@ def train(
     ) = fetch_demos(env_name, zero_out_rewards=cfg.train_discriminator)
     expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
-    if "maze" in env_name:
-        # env = AntMazeResetWrapper(GoalWrapper(env), qpos, qvel, goals)
-        env = GoalWrapper(env)
-    else:
-        raise NotImplementedError
-
-    mixed_reset_env = AntMazeResetWrapper(
-        GoalWrapper(gym.make(cfg.overrides.env.lower().replace("gym___", ""))),
-        qpos,
-        qvel,
-        goals,
-        alpha=0.5,
-    )
+    # if "maze" in env_name:
+    #     # env = AntMazeResetWrapper(GoalWrapper(env), qpos, qvel, goals)
+    #     env = GoalWrapper(env)
+    # else:
+    #     raise NotImplementedError
 
     env.alpha = alpha
     if cfg.train_discriminator:
         if cfg.use_ensemble:
             cprint("Using ensemble", color="green", attrs=["bold"])
-            f_net = DiscriminatorEnsemble(env).to(cfg.device)
+            f_net = DiscriminatorEnsemble(env, tanh_disc=cfg.tanh_disc).to(cfg.device)
         else:
             cprint("Not using ensemble", color="green", attrs=["bold"])
-            f_net = Discriminator(env).to(cfg.device)
+            f_net = Discriminator(env, tanh_disc=cfg.tanh_disc).to(cfg.device)
         cprint(
             f"Disc_lr: {learn_rate}, Disc_freq: {cfg.freq_train_discriminator}",
             color="green",
@@ -289,8 +292,22 @@ def train(
     else:
         f_net = None
 
-    env = TremblingHandWrapper(env, p_tremble=0)
-    test_env = TremblingHandWrapper(GoalWrapper(test_env), p_tremble=0)
+    # ---------------------------- Initialize Envs ------------------------------
+    env = create_env(env_name, cfg.psdp_wrapper, f_net)
+    test_env = create_env(env_name, cfg.psdp_wrapper, f_net=None)
+    mixed_reset_env = AntMazeResetWrapper(
+        GoalWrapper(gym.make(cfg.overrides.env.lower().replace("gym___", ""))),
+        qpos,
+        qvel,
+        goals,
+        alpha=0.5,
+    )
+
+    # env = TremblingHandWrapper(env, p_tremble=0)
+    # test_env = TremblingHandWrapper(GoalWrapper(test_env), p_tremble=0)
+    # if cfg.psdp_wrapper:
+    #     env = PSDPWrapper(env)
+    #     test_env = PSDPWrapper(test_env)
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
@@ -321,6 +338,8 @@ def train(
     if cfg.ema:
         ema_agent = EMA(agent)
 
+    breakpoint()
+
     if cfg.bc_init:
         for _ in range(1):
             agent.learn(total_timesteps=int(1e4), bc=True)
@@ -335,6 +354,7 @@ def train(
     MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
         ("true_reset_eval_mean", "TR", "float"),
         ("mixed_reset_eval_mean", "MR", "float"),
+        ("real_env_eval_mean", "RE", "float"),
     ]
     logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)
     logger.register_group(
@@ -438,17 +458,30 @@ def train(
         agent.pi_replay_buffer = sac_buffer
         obs, done = None, False
         # for step in range(pi_steps):
-        for epoch in range(cfg.overrides.epoch_length):
-            if epoch == 0 or done:
+        # for epoch in range(cfg.overrides.epoch_length):
+        steps_epoch = 0
+        while steps_epoch < cfg.overrides.epoch_length:
+            if steps_epoch == 0 or done:
                 obs, done = env.reset(), False
-            next_obs, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
-                env,
-                obs,
-                agent,
-                {},
-                replay_buffer=agent.pi_replay_buffer,
-                additional_buffer=replay_buffer,
-            )
+            try:
+                next_obs, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
+                    env,
+                    obs,
+                    agent,
+                    {},
+                    replay_buffer=agent.pi_replay_buffer,
+                    additional_buffer=replay_buffer,
+                )
+            except Exception as e:
+                print(f"Lost Connection: {e}")
+                try:
+                    env.close()
+                except:
+                    env = None
+                env = create_env(env_name, cfg.psdp_wrapper, f_net)
+                obs, done = env.reset(), False
+                steps_epoch = 0
+                continue
 
             (
                 exp_obs,
@@ -596,15 +629,18 @@ def train(
                 else:
                     eval_agent = agent
                 mean_reward, _ = evaluate_policy(
-                    eval_agent, test_env, n_eval_episodes=25
+                    eval_agent, test_env, n_eval_episodes=15
                 )
                 mean_reward = mean_reward * 100
                 try:
                     true_reset_eval_mean, _ = eval_agent_in_model(
-                        model_env, test_env, f_net, eval_agent, 5, cfg
+                        model_env, env, f_net, eval_agent, 5, cfg
                     )
                     mixed_reset_eval_mean, _ = eval_agent_in_model(
                         model_env, mixed_reset_env, f_net, eval_agent, 5, cfg
+                    )
+                    real_env_eval_mean, _ = evaluate_policy(
+                        eval_agent, env, n_eval_episodes=15
                     )
                     logger.log_data(
                         mbrl.constants.RESULTS_LOG_NAME,
@@ -613,6 +649,7 @@ def train(
                             "episode_reward": mean_reward,
                             "true_reset_eval_mean": true_reset_eval_mean,
                             "mixed_reset_eval_mean": mixed_reset_eval_mean,
+                            "real_env_eval_mean": real_env_eval_mean,
                         },
                     )
                 except:
@@ -623,12 +660,14 @@ def train(
                             "episode_reward": mean_reward,
                             "true_reset_eval_mean": 0.0,
                             "mixed_reset_eval_mean": 0.0,
+                            "real_env_eval_mean": 0.0,
                         },
                     )
                     print("{0} Iteration: {1}".format(int(env_steps), mean_reward))
 
             tbar.update(1)
             env_steps += 1
+            steps_epoch += 1
             obs = next_obs
 
         epoch += 1
