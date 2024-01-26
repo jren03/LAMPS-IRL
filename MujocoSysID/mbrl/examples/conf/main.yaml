@@ -28,6 +28,8 @@ reset_version: "psdp"
 bc_learner: true
 # use ema of actor weights to evaluate
 ema: false
+# append timestep to observation_space
+actual_psdp: false
 
 root_dir: "./exp"
 hydra:

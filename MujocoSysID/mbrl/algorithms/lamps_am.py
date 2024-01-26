@@ -204,8 +204,11 @@ def eval_agent_in_model(
                 reward,
             )
             rewards[episode] += reward
+            breakpoint()
             step += 1
-    return torch.mean(rewards).item(), torch.std(rewards).item()
+    rewards /= cfg.overrides.epoch_length
+    rewards_mean = torch.mean(torch.mean(rewards, dim=1), dim=0).item()
+    return rewards_mean, None
 
 
 def train(

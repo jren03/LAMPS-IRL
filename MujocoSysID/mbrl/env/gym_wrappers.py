@@ -85,6 +85,26 @@ class GoalWrapper(gym.Wrapper):
         return np.concatenate([obs, goal]), rew, done, info
 
 
+class PSDPWrapper(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self.env = env
+        self.t = 0
+        self.observation_space = gym.spaces.Box(
+            low=-np.inf, high=np.inf, shape=env.observation_space.shape[0] + 1
+        )
+
+    def reset(self):
+        obs = self.env.reset()
+        self.t = 0
+        return np.concatenate([obs, np.array([0])])
+
+    def step(self, action):
+        obs, rew, done, info = self.env.step(action)
+        self.t += 1
+        return np.concatenate([obs, np.array([self.t])]), rew, done, info
+
+
 class AntMazeResetWrapper(gym.Wrapper):
     def __init__(self, env, qpos, qvel, G, alpha=1):
         super().__init__(env)

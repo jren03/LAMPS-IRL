@@ -14,6 +14,7 @@ import glob
 from rliable import library as rly
 from rliable import metrics
 from rliable import plot_utils
+from collections import defaultdict
 
 sns.set(font="serif", font_scale=1.4)
 sns.set_style(
@@ -98,8 +99,28 @@ def main(env_abbrv, env_name, steps=15):
     # steps = 100
     # sz = 1000
 
+    reset_versions = [
+        "psdp",
+        "nrpi",
+        "backward-sw",
+        "forward-sw",
+        "backward-range",
+        "forward-range",
+    ]
+    # create a subplot for each reset version, and a map from
+    # reset version to the subplot
+    reset_version_to_ax = {}
+    reset_version_to_scores = defaultdict(list)
+    fig = plt.figure(dpi=100, figsize=(7.0, 6.0))
+    gs = gridspec.GridSpec(2, 3)
+    for i, reset_version in enumerate(reset_versions):
+        ax = plt.subplot(gs[i])
+        reset_version_to_ax[reset_version] = ax
+
     # steps = 10
     sz = 10_000
+    partition = ""
+    reset_version_to_steps = defaultdict(int)
     for alg in algs_to_colors.keys():
         if alg == "exp" and env_abbrv in env_name_to_exp_scores.keys():
             plt.plot(
@@ -110,51 +131,102 @@ def main(env_abbrv, env_name, steps=15):
                 label=algs_to_labels[alg],
             )
         elif alg == "bc" and env_abbrv in env_name_to_bc_scores.keys():
-            plt.plot(
-                np.arange(steps) * sz,
-                np.ones(steps) * env_name_to_bc_scores[env_abbrv],
-                color=algs_to_colors[alg],
-                linestyle="--",
-                label=algs_to_labels[alg],
-            )
+            # plot BC on each subplot
+            for reset_version, ax in reset_version_to_ax.items():
+                steps = max(reset_version_to_steps[reset_version], 2)
+                ax.plot(
+                    np.arange(steps) * sz,
+                    np.ones(steps) * env_name_to_bc_scores[env_abbrv],
+                    color=algs_to_colors[alg],
+                    linestyle="--",
+                    label=algs_to_labels[alg],
+                )
         else:
             csvs = [f for f in csv_results_dir.glob("*.csv") if alg in f.name]
-            scores = []
+            # scores = []
+            appended = False
             for csv in csvs:
+                reset_version = csv.stem.split("_")[-2]
                 data = pd.read_csv(csv).episode_reward.to_numpy()
                 shaky = "shaky" in csv.name
+                print(
+                    f"Read {csv} with {len(data)} entries: reset_version={reset_version}"
+                )
+                reset_version_to_steps[reset_version] = max(
+                    reset_version_to_steps[reset_version], len(data)
+                )
+
+            for csv in csvs:
+                reset_version = csv.stem.split("_")[-2]
+                scores = reset_version_to_scores[reset_version]
+                steps = reset_version_to_steps[reset_version]
+                if steps == 1:
+                    steps += 1
+                data = pd.read_csv(csv).episode_reward.to_numpy()
                 if len(data) >= steps:
                     scores.append(data[:steps])
-                else:
+                    appended = True
+                elif len(data) > steps - 3:
                     # extend last value to steps
-                    continue
                     print(f"Extending {alg} from {len(data)} to", end=" ")
                     scores.append(
                         np.concatenate([data, np.ones(steps - len(data)) * data[-1]])
                     )
                     print(f"{len(scores[-1])}")
-            if scores == []:
+                    appended = True
+                partition = csv.stem.split("_")[-1]
+
+            if not appended:
                 print(f"Skipping {alg}")
                 continue
-            scores = np.stack(scores, axis=0)
-            mean, std_err = (
-                calc_iqm(scores)["alg"],
-                np.std(scores, axis=0) / np.sqrt(len(scores)),
-            )
-            plt.plot(
-                np.arange(steps) * sz,
-                mean,
-                color=algs_to_colors[alg],
-                label=f"{algs_to_labels[alg]}: {len(scores)} runs",
-            )
-            plt.fill_between(
-                np.arange(steps) * sz,
-                mean - std_err,
-                mean + std_err,
-                color=algs_to_colors[alg],
-                alpha=0.1,
-            )
-            print(f"Plotting {alg} with {len(scores)} runs")
+
+            # loop through each reset verion and plot
+            for reset_version, ax in reset_version_to_ax.items():
+                steps = reset_version_to_steps[reset_version]
+                if steps == 1:
+                    steps += 1
+                scores = reset_version_to_scores[reset_version]
+                if scores == []:
+                    continue
+                scores = np.stack(scores, axis=0)
+                mean, std_err = (
+                    calc_iqm(scores)["alg"],
+                    np.std(scores, axis=0) / np.sqrt(len(scores)),
+                )
+                ax.plot(
+                    np.arange(steps) * sz,
+                    mean,
+                    color=algs_to_colors[alg],
+                    label=f"{algs_to_labels[alg]}: {len(scores)} runs",
+                )
+                ax.fill_between(
+                    np.arange(steps) * sz,
+                    mean - std_err,
+                    mean + std_err,
+                    color=algs_to_colors[alg],
+                    alpha=0.1,
+                )
+                print(f"Plotting {alg} with {len(scores)} runs")
+                ax.set_title(reset_version)
+            # scores = np.stack(scores, axis=0)
+            # mean, std_err = (
+            #     calc_iqm(scores)["alg"],
+            #     np.std(scores, axis=0) / np.sqrt(len(scores)),
+            # )
+            # plt.plot(
+            #     np.arange(steps) * sz,
+            #     mean,
+            #     color=algs_to_colors[alg],
+            #     label=f"{algs_to_labels[alg]}: {len(scores)} runs",
+            # )
+            # plt.fill_between(
+            #     np.arange(steps) * sz,
+            #     mean - std_err,
+            #     mean + std_err,
+            #     color=algs_to_colors[alg],
+            #     alpha=0.1,
+            # )
+            # print(f"Plotting {alg} with {len(scores)} runs")
 
     if shaky:
         p_tremble = env_name_to_ptremble[env_abbrv]
@@ -166,7 +238,8 @@ def main(env_abbrv, env_name, steps=15):
     plt.ylabel("IQM of $J(\\pi)$")
     plt.xlabel("Env. Steps")
     plt.xticks(rotation=45)
-    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble))
+    plt.suptitle(f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble) + ", " + partition)
+    plt.tight_layout()
     plt.savefig(f"plots/{env_name}.png", bbox_inches="tight")
     print("SAVED")
 

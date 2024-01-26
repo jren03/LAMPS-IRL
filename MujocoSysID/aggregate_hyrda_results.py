@@ -55,14 +55,14 @@ def main(env_name, override, partition, date, alg_override):
                 try:
                     hydra_yml = yaml.safe_load(stream)
                     seed = hydra_yml.get("seed")
-                    reset_version = hydra_yml.get("reset_version")
+                    reset_version = hydra_yml.get("reset_version").replace("_", "-")
                 except yaml.YAMLError as exc:
                     print(exc)
 
             # Copy the csv file to the csv_results directory
             new_file_path = Path(
                 csv_results_dir,
-                f"{alg}_s{seed}_{reset_version}_l{len(df)}.csv",
+                f"{alg}_s{seed}_{reset_version}_{partition}.csv",
             )
             if new_file_path.exists():
                 continue
