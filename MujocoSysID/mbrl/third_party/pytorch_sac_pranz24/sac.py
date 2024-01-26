@@ -89,6 +89,10 @@ class SAC(object):
         if args.normalize_obs:
             cprint("Using normalizer on SAC", attrs=["bold"])
             self.running_state = RunningNormalizer(num_inputs, device=self.device)
+            self.normalize_obs = True
+        else:
+            cprint("Not using normalizer on SAC", attrs=["bold"])
+            self.normalize_obs = False
 
     def select_action(self, state, batched=False, evaluate=False):
         state = torch.FloatTensor(state)
