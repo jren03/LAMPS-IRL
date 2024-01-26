@@ -15,13 +15,15 @@ seed: 1
 
 # JUNTAO params
 freq_eval: 10000
-freq_train_discriminator: 5000
+freq_train_discriminator: 2000
 disc_lr: 8e-3
 
 train_discriminator: true
 use_ensemble: false
 
+# choose from nrpi, psdp, sw, range
 reset_version: "psdp"
+
 # reset_version_1: false
 # reset_version_2: false
 

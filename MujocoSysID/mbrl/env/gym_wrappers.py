@@ -86,10 +86,10 @@ class GoalWrapper(gym.Wrapper):
 
 
 class AntMazeResetWrapper(gym.Wrapper):
-    def __init__(self, env, qpos, qvel, G):
+    def __init__(self, env, qpos, qvel, G, alpha=1):
         super().__init__(env)
         self.env = env
-        self.alpha = 1
+        self.alpha = alpha
         self.qpos = qpos
         self.qvel = qvel
         self.G = G

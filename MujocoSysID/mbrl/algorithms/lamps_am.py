@@ -6,6 +6,7 @@ from ast import Not
 import os
 from typing import Optional, Sequence, cast
 
+import time
 import gym
 import hydra.utils
 from networkx import minimum_node_cut
@@ -164,19 +165,22 @@ def eval_agent_in_model(
     num_episodes: int,
     cfg: omegaconf.DictConfig,
 ):
-    action_repeat_times = model_env.dynamics_model.model.num_members
-    rewards = torch.zeros(num_episodes, action_repeat_times).to(cfg.device)
+    # elite_ensemble_size = model_env.dynamics_model.model.num_members
+    elite_ensemble_size = model_env.dynamics_model.num_elites
+    rewards = torch.zeros(num_episodes, elite_ensemble_size).to(cfg.device)
     for episode in range(num_episodes):
         initial_obs = test_env.reset().reshape(1, -1)
         model_state = model_env.reset(initial_obs_batch=initial_obs, return_as_np=True)
-        model_state["obs"] = model_state["obs"].repeat((7, 1))
+        model_state["obs"] = model_state["obs"].repeat((elite_ensemble_size, 1))
         done = False
         obs = initial_obs
-        while not done:
+        step = 0
+        while not np.all(done) and step < cfg.overrides.epoch_length:
             action = agent.act(obs, batched=True)
             # repeat action model_env.dynamics_model.model.num_members times
-            action = np.repeat(action, action_repeat_times, axis=0)
-            obs, _, done, model_state = model_env.step(
+            if action.shape[0] == 1:
+                action = np.repeat(action, elite_ensemble_size, axis=0)
+            obs, _, new_done, model_state = model_env.step(
                 action, model_state, sample=False
             )
             reward = -f_net(
@@ -190,9 +194,16 @@ def eval_agent_in_model(
                 .float()
                 .to(cfg.device)
             )
+            # Set reward to 0 where done is True, otherwise set it to a specific value
+            done = np.where(done, 1.0, new_done)
+            reward = torch.where(
+                torch.from_numpy(done.flatten()).bool().to(cfg.device),
+                torch.tensor(0.0).to(cfg.device),
+                reward,
+            )
             rewards[episode] += reward
-            breakpoint()
-    return torch.mean(rewards), torch.std(rewards)
+            step += 1
+    return torch.mean(rewards).item(), torch.std(rewards).item()
 
 
 def train(
@@ -217,10 +228,12 @@ def train(
 
     if cfg.reset_version == "psdp":
         cprint("Resting to PSDP", color="green", attrs=["bold"])
-        nrpi_reset = False
     elif cfg.reset_version == "nrpi":
         cprint("Resting to NRPI", color="green", attrs=["bold"])
-        nrpi_reset = True
+    elif cfg.reset_version == "sw":
+        cprint("Resting to sliding window", color="green", attrs=["bold"])
+    elif cfg.reset_version == "range":
+        cprint("Resting with range from end", color="green", attrs=["bold"])
     else:
         raise NotImplementedError
 
@@ -240,6 +253,14 @@ def train(
         env = GoalWrapper(env)
     else:
         raise NotImplementedError
+
+    mixed_reset_env = AntMazeResetWrapper(
+        GoalWrapper(gym.make(cfg.overrides.env.lower().replace("gym___", ""))),
+        qpos,
+        qvel,
+        goals,
+        alpha=0.5,
+    )
 
     env.alpha = alpha
     if cfg.train_discriminator:
@@ -297,7 +318,10 @@ def train(
 
     # ---------------------------------- LAMPS START ------------------------------------
     work_dir = work_dir or os.getcwd()
-    MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT
+    MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
+        ("true_reset_eval_mean", "TR", "float"),
+        ("mixed_reset_eval_mean", "MR", "float"),
+    ]
     logger = mbrl.util.Logger(work_dir, enable_back_compatible=True)
     logger.register_group(
         mbrl.constants.RESULTS_LOG_NAME,
@@ -379,12 +403,6 @@ def train(
     )
     sac_buffer = None
     # ---------------------------------- LAMPS END ------------------------------------
-
-    eval_mean, eval_stdev = eval_agent_in_model(
-        model_env, test_env, f_net, agent, 25, cfg
-    )
-    print(f"Initial eval: {eval_mean}, {eval_stdev}")
-    exit()
 
     # ---------------------------------- ORIGINAL FILTER LOOP --------------------------
     env_steps = 0
@@ -503,19 +521,34 @@ def train(
                 disc_steps += 1
 
             if env_steps % cfg.freq_eval == 0 and env_steps != 0:
-                mean_reward, std_reward = evaluate_policy(
-                    agent, test_env, n_eval_episodes=25
-                )
+                mean_reward, _ = evaluate_policy(agent, test_env, n_eval_episodes=25)
                 mean_reward = mean_reward * 100
                 try:
+                    true_reset_eval_mean, _ = eval_agent_in_model(
+                        model_env, test_env, f_net, agent, 5, cfg
+                    )
+                    mixed_reset_eval_mean, _ = eval_agent_in_model(
+                        model_env, mixed_reset_env, f_net, agent, 5, cfg
+                    )
                     logger.log_data(
                         mbrl.constants.RESULTS_LOG_NAME,
                         {
                             "env_step": env_steps,
                             "episode_reward": mean_reward,
+                            "true_reset_eval_mean": true_reset_eval_mean,
+                            "mixed_reset_eval_mean": mixed_reset_eval_mean,
                         },
                     )
                 except:
+                    logger.log_data(
+                        mbrl.constants.RESULTS_LOG_NAME,
+                        {
+                            "env_step": env_steps,
+                            "episode_reward": mean_reward,
+                            "true_reset_eval_mean": 0.0,
+                            "mixed_reset_eval_mean": 0.0,
+                        },
+                    )
                     print("{0} Iteration: {1}".format(int(env_steps), mean_reward))
 
             tbar.update(1)
