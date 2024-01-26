@@ -87,6 +87,7 @@ def evaluate(
                 reward = reward.cpu().detach().item()
             episode_reward += reward
         avg_episode_reward += episode_reward
+    avg_episode_reward /= 1000
     return avg_episode_reward / num_episodes
 
 
