@@ -69,27 +69,6 @@ def sample(env, policy, trajs, no_regret):
     return torch.from_numpy(np.array(S_curr)), torch.from_numpy(np.array(A_curr)), s
 
 
-def evaluate(
-    env: gym.Env,
-    agent: SACAgent,
-    num_episodes: int,
-) -> float:
-    avg_episode_reward = 0
-    for episode in range(num_episodes):
-        obs = env.reset()
-        done = False
-        episode_reward = 0
-        while not done:
-            action = agent.act(obs)
-            obs, reward, done, _ = env.step(action)
-            if torch.is_tensor(reward):
-                reward = reward.cpu().detach().item()
-            episode_reward += reward
-        avg_episode_reward += episode_reward
-    avg_episode_reward /= 1000
-    return avg_episode_reward / num_episodes
-
-
 def maybe_replace_sac_buffer(
     sac_buffer: Optional[mbrl.util.ReplayBuffer],
     obs_shape: Sequence[int],
@@ -239,6 +218,28 @@ def eval_agent_in_model(
     return rewards_mean, None
 
 
+def evaluate(
+    env: gym.Env,
+    agent: SACAgent,
+    num_episodes: int,
+    cfg: omegaconf.DictConfig,
+) -> float:
+    avg_episode_reward = 0
+    for episode in range(num_episodes):
+        obs = env.reset()
+        done = False
+        episode_reward = 0
+        while not done:
+            action = agent.act(obs)
+            obs, reward, done, _ = env.step(action)
+            if torch.is_tensor(reward):
+                reward = reward.cpu().detach().item()
+            episode_reward += reward
+        avg_episode_reward += episode_reward
+    avg_episode_reward /= cfg.overrides.epoch_length
+    return avg_episode_reward / num_episodes
+
+
 def train(
     env: gym.Env,
     test_env: gym.Env,
@@ -330,6 +331,8 @@ def train(
         goals,
         alpha=0.5,
     )
+    if cfg.psdp_wrapper:
+        mixed_reset_env = PSDPWrapper(mixed_reset_env)
 
     # env = TremblingHandWrapper(env, p_tremble=0)
     # test_env = TremblingHandWrapper(GoalWrapper(test_env), p_tremble=0)
@@ -661,36 +664,36 @@ def train(
                     eval_agent, test_env, n_eval_episodes=15
                 )
                 mean_reward = mean_reward * 100
-                try:
-                    real_env_eval_mean = evaluate(env, eval_agent, num_episodes=15)
-                    true_reset_eval_mean, _ = eval_agent_in_model(
-                        model_env, test_env, f_net, eval_agent, 5, cfg
-                    )
-                    mixed_reset_eval_mean, _ = eval_agent_in_model(
-                        model_env, mixed_reset_env, f_net, eval_agent, 5, cfg
-                    )
-                    logger.log_data(
-                        mbrl.constants.RESULTS_LOG_NAME,
-                        {
-                            "env_step": env_steps,
-                            "episode_reward": mean_reward,
-                            "true_reset_eval_mean": true_reset_eval_mean,
-                            "mixed_reset_eval_mean": mixed_reset_eval_mean,
-                            "real_env_eval_mean": real_env_eval_mean,
-                        },
-                    )
-                except:
-                    logger.log_data(
-                        mbrl.constants.RESULTS_LOG_NAME,
-                        {
-                            "env_step": env_steps,
-                            "episode_reward": mean_reward,
-                            "true_reset_eval_mean": 0.0,
-                            "mixed_reset_eval_mean": 0.0,
-                            "real_env_eval_mean": 0.0,
-                        },
-                    )
-                    print("{0} Iteration: {1}".format(int(env_steps), mean_reward))
+                # try:
+                real_env_eval_mean = evaluate(env, eval_agent, num_episodes=15, cfg=cfg)
+                true_reset_eval_mean, _ = eval_agent_in_model(
+                    model_env, test_env, f_net, eval_agent, 5, cfg
+                )
+                mixed_reset_eval_mean, _ = eval_agent_in_model(
+                    model_env, mixed_reset_env, f_net, eval_agent, 5, cfg
+                )
+                logger.log_data(
+                    mbrl.constants.RESULTS_LOG_NAME,
+                    {
+                        "env_step": env_steps,
+                        "episode_reward": mean_reward,
+                        "true_reset_eval_mean": true_reset_eval_mean,
+                        "mixed_reset_eval_mean": mixed_reset_eval_mean,
+                        "real_env_eval_mean": real_env_eval_mean,
+                    },
+                )
+                # except:
+                #     logger.log_data(
+                #         mbrl.constants.RESULTS_LOG_NAME,
+                #         {
+                #             "env_step": env_steps,
+                #             "episode_reward": mean_reward,
+                #             "true_reset_eval_mean": 0.0,
+                #             "mixed_reset_eval_mean": 0.0,
+                #             "real_env_eval_mean": 0.0,
+                #         },
+                #     )
+                #     print("{0} Iteration: {1}".format(int(env_steps), mean_reward))
 
             tbar.update(1)
             env_steps += 1
