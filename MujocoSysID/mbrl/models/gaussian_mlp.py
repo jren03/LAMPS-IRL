@@ -15,6 +15,7 @@ import mbrl.util.math
 
 from .model import Ensemble
 from .util import EnsembleLinearLayer, truncated_normal_init
+from termcolor import cprint
 
 
 class GaussianMLP(Ensemble):
@@ -78,6 +79,7 @@ class GaussianMLP(Ensemble):
         propagation_method: Optional[str] = None,
         learn_logvar_bounds: bool = False,
         activation_fn_cfg: Optional[Union[Dict, omegaconf.DictConfig]] = None,
+        clip: bool = False,
     ):
         super().__init__(
             ensemble_size, device, propagation_method, deterministic=deterministic
@@ -125,6 +127,12 @@ class GaussianMLP(Ensemble):
         self.to(self.device)
 
         self.elite_models: List[int] = None
+
+        self.clip_output = clip
+        if clip:
+            self.clip_output = True
+            self.clip_min, self.clip_max = -40, 40
+            cprint("Clipping model", color="magenta", attrs=["bold"])
 
     def _maybe_toggle_layers_use_only_elite(self, only_elite: bool):
         if self.elite_models is None:
@@ -275,15 +283,15 @@ class GaussianMLP(Ensemble):
 
         """
         if use_propagation:
-            return self._forward_ensemble(
+            mean, log_var = self._forward_ensemble(
                 x, rng=rng, propagation_indices=propagation_indices
             )
-        return self._default_forward(x)
+        mean, log_var = self._default_forward(x)
+        if self.clip_output:
+            mean = torch.clamp(mean, self.clip_min, self.clip_max)
+        return mean, log_var
 
-    def _mse_loss(self,
-                  model_in: torch.Tensor, 
-                  target: torch.Tensor) -> torch.Tensor:
-
+    def _mse_loss(self, model_in: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         assert model_in.ndim == target.ndim
         if model_in.ndim == 2:  # add model dimension
             model_in = model_in.unsqueeze(0)
@@ -292,9 +300,7 @@ class GaussianMLP(Ensemble):
         loss = F.mse_loss(pred_mean, target, reduction="none").sum((1, 2))
         return loss.sum()
 
-    def _nll_loss(self,
-                  model_in: torch.Tensor, 
-                  target: torch.Tensor) -> torch.Tensor:
+    def _nll_loss(self, model_in: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         assert model_in.ndim == target.ndim
         if model_in.ndim == 2:  # add ensemble dimension
             model_in = model_in.unsqueeze(0)
@@ -309,42 +315,43 @@ class GaussianMLP(Ensemble):
         )  # sum over ensemble dimension
         nll += 0.01 * (self.max_logvar.sum() - self.min_logvar.sum())
         return nll
-    
-    def _value_loss(self,
-                  agent,
-                  model_in: torch.Tensor, 
-                  target: torch.Tensor) -> torch.Tensor:
 
+    def _value_loss(
+        self, agent, model_in: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
         assert model_in.ndim == target.ndim
         if model_in.ndim == 2:  # add model dimension
             model_in = model_in.unsqueeze(0)
             target = target.unsqueeze(0)
         pred_mean, _ = self.forward(model_in, use_propagation=False)
 
-        #print(pred_mean.shape)
-        #print(target.shape)
+        # print(pred_mean.shape)
+        # print(target.shape)
 
         num_ensemble = pred_mean.shape[0]
         batch_size = pred_mean.shape[1]
-        target_value = torch.empty((num_ensemble, batch_size,1), device=self.device)
-        pred_value = torch.empty((num_ensemble, batch_size,1), device=self.device)
+        target_value = torch.empty((num_ensemble, batch_size, 1), device=self.device)
+        pred_value = torch.empty((num_ensemble, batch_size, 1), device=self.device)
         for i in range(num_ensemble):
             with torch.no_grad():
-                target_value[i] = agent.sac_agent.estimate_value(target[i,...,:-1])
-            pred_value[i] = agent.sac_agent.estimate_value(pred_mean[i,...,:-1])
+                target_value[i] = agent.sac_agent.estimate_value(target[i, ..., :-1])
+            pred_value[i] = agent.sac_agent.estimate_value(pred_mean[i, ..., :-1])
 
-        value_loss = loss = F.l1_loss(pred_value, target_value, reduction="none").sum((1, 2))
-        reward_loss = F.mse_loss(pred_mean[...,-1:], target[...,-1:], reduction="none").sum((1, 2))
+        value_loss = loss = F.l1_loss(pred_value, target_value, reduction="none").sum(
+            (1, 2)
+        )
+        reward_loss = F.mse_loss(
+            pred_mean[..., -1:], target[..., -1:], reduction="none"
+        ).sum((1, 2))
         loss = value_loss / 100 + reward_loss
         return loss.sum()
-
 
     def loss(
         self,
         model_in: torch.Tensor,
         target: Optional[torch.Tensor] = None,
         value=False,
-        agent=None
+        agent=None,
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Computes Gaussian NLL loss.
 
@@ -374,8 +381,8 @@ class GaussianMLP(Ensemble):
             return self._nll_loss(model_in, target), {}
 
     def eval_score(  # type: ignore
-        self, 
-        model_in: torch.Tensor, 
+        self,
+        model_in: torch.Tensor,
         target: Optional[torch.Tensor] = None,
         value=False,
         agent=None,

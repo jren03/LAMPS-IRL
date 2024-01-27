@@ -13,6 +13,7 @@ import mbrl.types
 import mbrl.util.math
 
 from .model import Ensemble, Model
+from termcolor import cprint
 
 MODEL_LOG_FORMAT = [
     ("train_iteration", "I", "int"),
@@ -275,6 +276,7 @@ class OneDTransitionRewardModel(Model):
             raise RuntimeError(
                 "OneDTransitionRewardModel requires wrapped model to define method sample_1d"
             )
+        breakpoint()
         preds, next_model_state = self.model.sample_1d(
             model_in, model_state, rng=rng, deterministic=deterministic
         )
