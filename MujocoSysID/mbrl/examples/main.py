@@ -58,7 +58,7 @@ def run(cfg: omegaconf.DictConfig):
     # elif cfg.algorithm.name == "lamps_am_hie":
     #     return lamps_am_hie.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     elif cfg.algorithm.name == "model_pretraining":
-        return mp.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+        return mp.train(env, cfg)
     else:
         raise NotImplementedError
     # if cfg.algorithm.name == "pets":

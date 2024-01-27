@@ -21,6 +21,8 @@ import mbrl.types
 import mbrl.util
 import mbrl.util.common
 import mbrl.util.math
+import functools
+import itertools
 from mbrl.planning.sac_wrapper import SACAgent
 
 from tqdm import tqdm
@@ -239,17 +241,7 @@ def get_basic_buffer_iterators(
 
 def train(
     env: gym.Env,
-    test_env: gym.Env,
-    termination_fn: mbrl.types.TermFnType,
     cfg: omegaconf.DictConfig,
-    silent: bool = False,
-    work_dir: Optional[str] = None,
-    # model: mbrl.models.Model,
-    # model_trainer: mbrl.models.ModelTrainer,
-    # cfg: omegaconf.DictConfig,
-    # replay_buffer: ReplayBuffer,
-    # work_dir: Optional[Union[str, pathlib.Path]] = None,
-    # callback: Optional[Callable] = None,
 ):
     env_name = cfg.overrides.env.lower().replace("gym___", "")
 
@@ -318,7 +310,6 @@ def train(
         bootstrap_permutes=cfg.get("bootstrap_permutes", False),
     )
 
-    exit()
     if hasattr(model, "update_normalizer"):
         model.update_normalizer(expert_replay_buffer.get_all())
 
@@ -328,7 +319,6 @@ def train(
         num_epochs=cfg.get("num_epochs_train_model", None),
         patience=cfg.get("patience", 1),
         improvement_threshold=cfg.get("improvement_threshold", 0.01),
-        callback=callback,
     )
-    if work_dir is not None:
-        model.save(str(work_dir))
+    if model_train_dir is not None:
+        model.save(str(model_train_dir))

@@ -149,7 +149,7 @@ class ModelTrainer:
             else:
                 batch_callback_epoch = None
             batch_losses: List[float] = []
-            for batch in tqdm.tqdm(dataset_train, disable=disable_tqdm):
+            for batch in tqdm.tqdm(dataset_train, disable=disable_tqdm, leave=False):
                 loss, meta = self.model.update(batch, self.optimizer)
                 batch_losses.append(loss)
                 if batch_callback_epoch:
