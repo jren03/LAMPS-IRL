@@ -25,7 +25,7 @@ MODEL_LOG_FORMAT = [
     ("model_loss", "MLOSS", "float"),
     ("model_val_score", "MVSCORE", "float"),
     ("model_best_val_score", "MBVSCORE", "float"),
-    ("epochs_till_done", "ETD", "str"),
+    ("epochs_till_done", "ETD", "float"),
 ]
 
 
@@ -192,7 +192,7 @@ class ModelTrainer:
                         "model_best_val_score": best_val_score.mean()
                         if best_val_score is not None
                         else 0,
-                        "epochs_till_done": f"{epochs_since_update}/{patience}",
+                        "epochs_till_done": epochs_since_update / patience,
                     },
                 )
             if callback:

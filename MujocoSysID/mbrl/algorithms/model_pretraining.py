@@ -252,7 +252,7 @@ def train(
     )
     model_train_dir.mkdir(exist_ok=True)
     for csv in model_train_dir.glob("*.csv"):
-        cprint("Unlinking logs", "red", attrs=["bold"])
+        cprint(f"Unlinking {csv.stem}", "red", attrs=["bold"])
         csv.unlink()
     logger = mbrl.util.Logger(model_train_dir, enable_back_compatible=True)
     rng = np.random.default_rng(seed=cfg.seed)
