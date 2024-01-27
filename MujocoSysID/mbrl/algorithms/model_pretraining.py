@@ -79,6 +79,7 @@ def maybe_create_train_val_split(
     val_ratio: float = 0.2,
 ):
     if train_dataset_path.exists() and val_dataset_path.exists():
+        cprint("Loading train/val split", "green")
         return
     else:
         cprint("Creating train/val split", "red")
@@ -250,6 +251,9 @@ def train(
         f"/share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/model_train_dir/{env_name}"
     )
     model_train_dir.mkdir(exist_ok=True)
+    for csv in model_train_dir.glob("*.csv"):
+        cprint("Unlinking logs", "red", attrs=["bold"])
+        csv.unlink()
     logger = mbrl.util.Logger(model_train_dir, enable_back_compatible=True)
     rng = np.random.default_rng(seed=cfg.seed)
     torch_generator = torch.Generator(device=cfg.device)
