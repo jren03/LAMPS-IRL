@@ -41,7 +41,7 @@ def run(cfg: omegaconf.DictConfig):
         attrs=["bold"],
     )
     cprint(
-        f"clip_md: {cfg.clip_md}\twd_md: {cfg.wd_md}\tmass_decay_lr: {cfg.mass_decay_lr}",
+        f"clip_md: {cfg.clip_md}\twd_md: {cfg.wd_md}\tdecay_lr: {cfg.decay_lr}",
         color="green",
         attrs=["bold"],
     )

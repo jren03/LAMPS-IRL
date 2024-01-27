@@ -365,7 +365,7 @@ def train(
         "pi_replay_buffer": pi_replay_buffer,
         "env": env,
         "f": f_net,
-        "half": cfg.bc_learner,
+        "cfg": cfg,
     }
     agent = TD3_BC(**kwargs)
     if cfg.ema:
@@ -457,6 +457,7 @@ def train(
         optim_lr=cfg.overrides.model_lr,
         weight_decay=cfg.overrides.model_wd,
         logger=None if silent else logger,
+        schedule=cfg.decay_lr,
     )
 
     mbrl.util.common.rollout_agent_trajectories(

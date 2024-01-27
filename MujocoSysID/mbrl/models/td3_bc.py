@@ -9,6 +9,8 @@ from typing import cast
 import mbrl.types
 from mbrl.util.oadam import OAdam
 from mbrl.util.replay_buffer import ReplayBuffer
+from torch import optim as optim
+from termcolor import cprint
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -72,6 +74,7 @@ class TD3_BC(nn.Module):
         state_dim,
         action_dim,
         max_action,
+        cfg,
         discount=0.99,
         tau=0.005,
         policy_noise=0.2,
@@ -82,7 +85,8 @@ class TD3_BC(nn.Module):
         pi_replay_buffer=None,
         env=None,
         f=None,
-        half=True,
+        # half=True,
+        # schedule=False,
     ):
         super(TD3_BC, self).__init__()
         self.actor = Actor(state_dim, action_dim, max_action).to(device)
@@ -105,9 +109,27 @@ class TD3_BC(nn.Module):
         self.env = env
         self.f = f
 
-        self.half = half
-
+        self._half = cfg.bc_learner
         self.total_it = 0
+
+        self.schedule = False
+        if cfg.decay_lr:
+            self.schedule = True
+            self.crtic_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.critic_optimizer,
+                T_max=cfg.overrides.num_sac_updates_per_step * 50_000,
+                eta_min=1e-9,
+            )
+            self.actor_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.actor_optimizer,
+                T_max=cfg.overrides.num_sac_updates_per_step * 50_000,
+                eta_min=1e-9,
+            )
+            cprint(
+                "Using cosine annealing scheduler on Actor and Critic",
+                color="magenta",
+                attrs=["bold"],
+            )
 
     def reset(self):
         # for mbrl: do nothing
@@ -157,7 +179,7 @@ class TD3_BC(nn.Module):
 
     def step(self, batch_size=256, bc=False):
         self.total_it += 1
-        if not bc and self.half:
+        if not bc and self._half:
             # 50/50 sample, loss function on all data
             learner_batch = self.pi_replay_buffer.sample(batch_size // 2)
             if isinstance(self.pi_replay_buffer, ReplayBuffer):
@@ -234,6 +256,8 @@ class TD3_BC(nn.Module):
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
+        if self.schedule:
+            self.crtic_scheduler.step()
 
         # Delayed policy updates
         if self.total_it % self.policy_freq == 0:
@@ -250,6 +274,8 @@ class TD3_BC(nn.Module):
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
             self.actor_optimizer.step()
+            if self.schedule:
+                self.actor_scheduler.step()
 
             # Update the frozen target models
             for param, target_param in zip(

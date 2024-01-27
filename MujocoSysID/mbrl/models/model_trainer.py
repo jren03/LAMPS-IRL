@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import tqdm
 from torch import optim as optim
+from termcolor import cprint
 
 from mbrl.util.logger import Logger
 from mbrl.util.replay_buffer import BootstrapIterator, TransitionIterator
@@ -48,6 +49,7 @@ class ModelTrainer:
         weight_decay: float = 1e-5,
         optim_eps: float = 1e-8,
         logger: Optional[Logger] = None,
+        schedule: bool = False,
     ):
         self.model = model
         self._train_iteration = 0
@@ -67,6 +69,18 @@ class ModelTrainer:
             weight_decay=weight_decay,
             eps=optim_eps,
         )
+
+        self.schedule = False
+        if schedule:
+            self.schedule = True
+            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer, T_max=50_000, eta_min=1e-9
+            )
+            cprint(
+                "Using cosine annealing scheduler on Model",
+                color="magenta",
+                attrs=["bold"],
+            )
 
     def train(
         self,
@@ -152,6 +166,8 @@ class ModelTrainer:
             batch_losses: List[float] = []
             for batch in tqdm.tqdm(dataset_train, disable=disable_tqdm, leave=False):
                 loss, meta = self.model.update(batch, self.optimizer)
+                if self.schedule:
+                    self.scheduler.step()
                 batch_losses.append(loss)
                 if batch_callback_epoch:
                     batch_callback_epoch(loss, meta, "train")

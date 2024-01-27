@@ -36,7 +36,7 @@ tanh_disc: false
 # clip/weight decay
 clip_md: false
 wd_md: false
-mass_decay_lr: false
+decay_lr: false
 
 
 root_dir: "./exp"
