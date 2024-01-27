@@ -32,7 +32,7 @@ def fetch_demos(env_name, cfg):
             "rewards": data["rewards"],
             "terminals": data["terminals"],
         }
-        if cfg.train_discriminator:
+        if cfg["train_discriminator"]:
             dataset["rewards"] = np.zeros_like(data["rewards"])
         print(f"{np.mean(dataset['rewards'])=}")
         return (

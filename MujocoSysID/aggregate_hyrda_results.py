@@ -27,7 +27,7 @@ def main(env_name, override, partition, date, alg_override):
                     f.unlink()
 
         # loop through date/run_id/multi_run_num
-        for subdir in base_dir.glob(f"2024.{date}/*"):
+        for subdir in base_dir.glob(f"{date}/*"):
             if not subdir.is_dir():
                 continue
             results_file = Path(subdir, "results.csv")

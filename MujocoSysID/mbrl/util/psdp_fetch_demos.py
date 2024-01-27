@@ -17,28 +17,28 @@ else:
 def fetch_demos(env_name, cfg=None):
     env_name = env_name.replace("gym___", "")
 
-    possible_data_path = Path(data_root, f"{env_name}_psdp_demos.npz")
-    if cfg is not None and possible_data_path.exists():
-        print(f"Loading from {possible_data_path}")
-        data = np.load(possible_data_path, allow_pickle=True)
-        dataset = {
-            "observations": data["observations"],
-            "actions": data["actions"],
-            "next_observations": data["next_observations"],
-            "rewards": data["rewards"],
-            "terminals": data["terminals"],
-        }
-        if cfg.train_discriminator:
-            dataset["rewards"] = np.zeros_like(data["rewards"])
-        print(f"{np.mean(dataset['rewards'])=}")
-        return (
-            dataset,
-            torch.from_numpy(data["expert_sa_pairs"]),
-            data["qpos"],
-            data["qvel"],
-            data["goals"],
-            data["expert_reset_states"],
-        )
+    # possible_data_path = Path(data_root, f"{env_name}_psdp_demos.npz")
+    # if cfg is not None and possible_data_path.exists():
+    #     print(f"Loading from {possible_data_path}")
+    #     data = np.load(possible_data_path, allow_pickle=True)
+    #     dataset = {
+    #         "observations": data["observations"],
+    #         "actions": data["actions"],
+    #         "next_observations": data["next_observations"],
+    #         "rewards": data["rewards"],
+    #         "terminals": data["terminals"],
+    #     }
+    #     if cfg["train_discriminator"]:
+    #         dataset["rewards"] = np.zeros_like(data["rewards"])
+    #     print(f"{np.mean(dataset['rewards'])=}")
+    #     return (
+    #         dataset,
+    #         torch.from_numpy(data["expert_sa_pairs"]),
+    #         data["qpos"],
+    #         data["qvel"],
+    #         data["goals"],
+    #         data["expert_reset_states"],
+    #     )
 
     if "maze" in env_name:
         env = gym.make(env_name)
@@ -53,12 +53,16 @@ def fetch_demos(env_name, cfg=None):
             start = term[i][0] + 1
         expert_ranges = np.array(expert_ranges)
         obs_ref = {}
+        obs_start = []
+        obs_end = []
         for exp_range in expert_ranges:
             for i, obs in enumerate(
                 dataset["observations"][exp_range[0] : exp_range[1]]
             ):
                 # add timestep
                 obs_ref[tuple(obs)] = i
+            obs_start.append(dataset["observations"][exp_range[0]])
+            obs_end.append(dataset["observations"][exp_range[1] - 1])
 
         q_dataset = d4rl.qlearning_dataset(env)
         curr_obs_pt = 0
@@ -189,4 +193,13 @@ def fetch_demos(env_name, cfg=None):
     else:
         raise NotImplementedError
 
-    return new_dataset, expert_sa_pairs, qpos, qvel, goals, expert_reset_states
+    return (
+        new_dataset,
+        expert_sa_pairs,
+        qpos,
+        qvel,
+        goals,
+        expert_reset_states,
+        obs_start,
+        obs_end,
+    )
