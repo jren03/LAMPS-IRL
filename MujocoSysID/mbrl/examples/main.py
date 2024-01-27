@@ -10,6 +10,7 @@ import gym
 from termcolor import cprint
 
 import mbrl.algorithms.lamps_am as lamps_am
+import mbrl.algorithms.model_pretraining as mp
 import mbrl.algorithms.lamps_am_mb as lamps_am_mb
 import mbrl.algorithms.lamps_am_mf as lamps_am_mf
 import mbrl.algorithms.lamps_am_hie as lamps_am_hie
@@ -56,6 +57,8 @@ def run(cfg: omegaconf.DictConfig):
     #     return lamps_am_mf.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     # elif cfg.algorithm.name == "lamps_am_hie":
     #     return lamps_am_hie.train(env, test_env, term_fn, cfg, silent=cfg.silent)
+    elif cfg.algorithm.name == "model_pretraining":
+        return mp.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     else:
         raise NotImplementedError
     # if cfg.algorithm.name == "pets":
