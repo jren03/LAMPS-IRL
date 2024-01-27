@@ -33,6 +33,12 @@ psdp_wrapper: false
 # tanh the discriminator output
 tanh_disc: false
 
+# clip/weight decay
+clip_md: false
+wd_md: false
+mass_decay_lr: false
+
+
 root_dir: "./exp"
 hydra:
   run:

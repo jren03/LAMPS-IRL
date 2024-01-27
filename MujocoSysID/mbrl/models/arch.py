@@ -3,10 +3,11 @@ from torch import nn
 import numpy as np
 import torch
 from mbrl.util.nn_utils import create_mlp, init_ortho
+from termcolor import cprint
 
 
 class Discriminator(nn.Module):
-    def __init__(self, env, tanh_disc=False):
+    def __init__(self, env, tanh_disc=False, clip=False):
         super(Discriminator, self).__init__()
         if isinstance(env.action_space, Discrete):
             self.net_arch = [64, 64]
@@ -34,8 +35,17 @@ class Discriminator(nn.Module):
         self.net = nn.Sequential(*net)
         self.net.apply(init_ortho)
 
+        if clip:
+            cprint("Clipping discriminator", color="magenta", attrs=["bold"])
+            self.clip = True
+            self.clip_min, self.clip_max = -40, 40
+        else:
+            self.clip = False
+
     def forward(self, inputs):
         output = self.net(inputs)
+        if self.clip:
+            output = torch.clamp(output, -40, 40)
         return output.view(-1)
 
 

@@ -97,8 +97,6 @@ def psdp_rollout_in_buffer(
     sac_buffer: mbrl.util.ReplayBuffer,
     rollout_horizon: int,
 ):
-    # batch = replay_buffer.sample(batch_size)
-    # initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
     model_state = model_env.reset(
         initial_obs_batch=cast(np.ndarray, initial_obs),
         return_as_np=True,
@@ -285,6 +283,7 @@ def train(
             goals,
             expert_reset_states,
         ) = psdp_fetch_demos(env_name, cfg)
+        print(f"{expert_dataset['observations'].shape}")
     else:
         (
             expert_dataset,
@@ -294,29 +293,32 @@ def train(
             goals,
             expert_reset_states,
         ) = fetch_demos(env_name, cfg)
+        print(f"{expert_dataset['observations'].shape}")
     expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
-    if "maze" in env_name:
-        # env = AntMazeResetWrapper(GoalWrapper(env), qpos, qvel, goals)
-        env = GoalWrapper(env)
-        if cfg.psdp_wrapper:
-            env = PSDPWrapper(env)
-    else:
-        raise NotImplementedError
+    env = create_env(env_name, cfg.psdp_wrapper, f_net=None)
 
     if cfg.train_discriminator:
         if cfg.use_ensemble:
             cprint("Using ensemble", color="green", attrs=["bold"])
-            f_net = DiscriminatorEnsemble(env, tanh_disc=cfg.tanh_disc).to(cfg.device)
+            f_net = DiscriminatorEnsemble(
+                env, tanh_disc=cfg.tanh_disc, clip=cfg.clip_md
+            ).to(cfg.device)
         else:
             cprint("Not using ensemble", color="green", attrs=["bold"])
-            f_net = Discriminator(env, tanh_disc=cfg.tanh_disc).to(cfg.device)
+            f_net = Discriminator(env, tanh_disc=cfg.tanh_disc, clip=cfg.clip_md).to(
+                cfg.device
+            )
         cprint(
             f"Disc_lr: {learn_rate}, Disc_freq: {cfg.freq_train_discriminator}",
             color="green",
             attrs=["bold"],
         )
-        f_opt = OAdam(f_net.parameters(), lr=learn_rate)
+        f_opt = OAdam(
+            f_net.parameters(),
+            lr=learn_rate,
+            weight_decay=cfg.overrides.model_wd if cfg.wd_md else 0,
+        )
         # env = RewardWrapper(env, f_net)
     else:
         f_net = None
@@ -633,7 +635,11 @@ def train(
                     learning_rate_used = learn_rate / disc_steps
                 else:
                     learning_rate_used = learn_rate
-                f_opt = OAdam(f_net.parameters(), lr=learning_rate_used)
+                f_opt = OAdam(
+                    f_net.parameters(),
+                    lr=learning_rate_used,
+                    weight_decay=cfg.overrides.model_wd if cfg.wd_md else 0,
+                )
 
                 S_curr, A_curr, s = sample(
                     test_env, agent, num_traj_sample, no_regret=False

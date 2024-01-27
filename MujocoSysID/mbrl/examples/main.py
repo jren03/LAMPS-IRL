@@ -35,10 +35,16 @@ def run(cfg: omegaconf.DictConfig):
         cprint("Using ground truth", color="green", attrs=["bold"])
 
     cprint(f"seed: {cfg.seed}", color="green", attrs=["bold"])
-    cprint(f"bc_learner: {cfg.bc_learner}", color="green", attrs=["bold"])
-    cprint(f"ema: {cfg.ema}", color="green", attrs=["bold"])
-    cprint(f"psdp_wrapper: {cfg.psdp_wrapper}", color="green", attrs=["bold"])
-    cprint(f"tanh_disc: {cfg.tanh_disc}", color="green", attrs=["bold"])
+    cprint(
+        f"ema: {cfg.ema}\tpsdp_wrapper: {cfg.psdp_wrapper}\ttanh_disc: {cfg.tanh_disc}",
+        color="green",
+        attrs=["bold"],
+    )
+    cprint(
+        f"clip_md: {cfg.clip_md}\twd_md: {cfg.wd_md}\tmass_decay_lr: {cfg.mass_decay_lr}",
+        color="green",
+        attrs=["bold"],
+    )
 
     if cfg.algorithm.name == "lamps_am":
         return lamps_am.train(env, test_env, term_fn, cfg, silent=cfg.silent)

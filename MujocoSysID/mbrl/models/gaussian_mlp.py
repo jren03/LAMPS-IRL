@@ -282,11 +282,16 @@ class GaussianMLP(Ensemble):
             the output to :func:`mbrl.util.math.propagate`.
 
         """
+        # if use_propagation:
+        #     self._forward_ensemble(x, rng=rng, propagation_indices=propagation_indices)
+        # return self._default_forward(x)
+
         if use_propagation:
             mean, log_var = self._forward_ensemble(
                 x, rng=rng, propagation_indices=propagation_indices
             )
-        mean, log_var = self._default_forward(x)
+        else:
+            mean, log_var = self._default_forward(x)
         if self.clip_output:
             mean = torch.clamp(mean, self.clip_min, self.clip_max)
         return mean, log_var
