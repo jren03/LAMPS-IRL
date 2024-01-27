@@ -5,3 +5,5 @@
 *.err
 *.out
 *.png
+
+model_train_dir/
