@@ -24,7 +24,7 @@ def main(env_name, override, partition, date):
                     f.unlink()
 
         # loop through date/run_id/multi_run_num
-        for subdir in base_dir.glob(f"{date}/*/*"):
+        for subdir in base_dir.glob(f"2024.{date}/*"):
             if not subdir.is_dir():
                 continue
             results_file = Path(subdir, "results.csv")
@@ -38,7 +38,8 @@ def main(env_name, override, partition, date):
                 print(f"Error reading {results_file}: {e}")
                 continue
 
-            if not is_non_zero_file(results_file) or (len(df) < 75 and len(df) != 30):
+            # if not is_non_zero_file(results_file) or (len(df) < 75 and len(df) != 30):
+            if not is_non_zero_file(results_file) or len(df) < 5:
                 print(f"Skipping {results_file} because it has {len(df)} entries")
                 continue
 
@@ -51,6 +52,9 @@ def main(env_name, override, partition, date):
                 try:
                     hydra_yml = yaml.safe_load(stream)
                     seed = hydra_yml.get("seed")
+                    p_tremble = hydra_yml.get("p_tremble")
+                    # if p_tremble != 0.05:
+                    #     continue
                 except yaml.YAMLError as exc:
                     print(exc)
 

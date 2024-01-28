@@ -50,7 +50,7 @@ def calc_iqm(data):
     return iqm_scores
 
 
-def main(env_abbrv, env_name):
+def main(env_abbrv, env_name, steps):
     csv_results_dir = Path("csv_results", env_name)
     algs_to_colors = {
         "exp": "green",
@@ -69,7 +69,8 @@ def main(env_abbrv, env_name):
         "ant": 4596,
         "hc": 10317,
         "hop": 3399,
-        "walk": 4395,
+        # "walk": 4395,
+        "walk": 5000,
         "hum": 6160,
         ### Yuda Experts
         # "ant": 5207.53,
@@ -79,8 +80,19 @@ def main(env_abbrv, env_name):
         # "walk": 5740.80,
     }
 
-    steps = 150
-    sz = 2000
+    env_name_to_ptremble = {
+        "ant": 0.01,
+        "hc": 0.075,
+        "hop": 0.01,
+        "walk": 0.05,
+        "hum": 0.025,
+        "div": 0.0,
+        "play": 0.0,
+    }
+
+    # steps = 150
+    # sz = 2000
+    sz = 10_000
     for alg in algs_to_colors.keys():
         if alg == "exp":
             plt.plot(
@@ -91,17 +103,21 @@ def main(env_abbrv, env_name):
                 label=algs_to_labels[alg],
             )
         else:
-            if alg == "mbpo":
-                steps = 150
-                sz = 4000
-            else:
-                steps = 30
-                sz = 10000
             csvs = [f for f in csv_results_dir.glob("*.csv") if alg in f.name]
             scores = []
             for csv in csvs:
                 data = pd.read_csv(csv).episode_reward.to_numpy()
-                scores.append(data)
+                if len(data) >= steps:
+                    scores.append(data[:steps])
+                elif len(data) > steps - 3:
+                    # extend last value to steps
+                    print(f"Extending {alg} from {len(data)} to", end=" ")
+                    scores.append(
+                        np.concatenate([data, np.ones(steps - len(data)) * data[-1]])
+                    )
+                else:
+                    continue
+                    # scores.append(data)
             if scores == []:
                 print(f"Skipping {alg}")
                 continue
@@ -130,7 +146,9 @@ def main(env_abbrv, env_name):
     plt.ylabel("IQM of $J(\\pi)$")
     plt.xlabel("Env. Steps")
     plt.xticks(rotation=45)
-    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(0))
+    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(env_name_to_ptremble[env_abbrv]))
+    # plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(0.05))
+
     plt.savefig(f"plots/{env_name}.png", bbox_inches="tight")
     print("SAVED")
 
@@ -144,7 +162,7 @@ if __name__ == "__main__":
         choices=["ant", "hc", "hop", "hum", "walk"],
         help="Name of the environment",
     )
-    parser.add_argument("-o", "--override", action="store_true", default=False)
+    parser.add_argument("-s", "--steps", type=int, default=10)
     args = parser.parse_args()
 
     env_abbr = args.env_name
@@ -159,4 +177,4 @@ if __name__ == "__main__":
     elif env_abbr == "walk":
         env_name = "Walker2d-v3"
     env_name = f"gym___{env_name}"
-    main(env_abbr, env_name)
+    main(env_abbr, env_name, args.steps)
