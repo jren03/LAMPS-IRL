@@ -29,6 +29,8 @@ from mbrl.util.oadam import OAdam
 from mbrl.util.common import gradient_penalty, PrintColors
 from mbrl.util.discriminator_replay_buffer import DiscriminatorReplayBuffer
 
+import torch.nn as nn
+
 import d4rl
 from tqdm import tqdm
 from ema_pytorch import EMA
@@ -45,6 +47,57 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("sac_reset_ratio", "SRR", "float"),
     ("disc_loss", "DL", "float"),
 ]
+
+
+def eval_agent_in_model(
+    model_env: mbrl.models.ModelEnv,
+    test_env: gym.Env,
+    f_net: nn.Module,
+    agent: SACAgent,
+    num_episodes: int,
+    cfg: omegaconf.DictConfig,
+):
+    # elite_ensemble_size = model_env.dynamics_model.model.num_members
+    elite_ensemble_size = model_env.dynamics_model.num_elites
+    rewards = torch.zeros(num_episodes, elite_ensemble_size).to(cfg.device)
+    for episode in range(num_episodes):
+        initial_obs = test_env.reset().reshape(1, -1)
+        model_state = model_env.reset(initial_obs_batch=initial_obs, return_as_np=True)
+        model_state["obs"] = model_state["obs"].repeat((elite_ensemble_size, 1))
+        done = False
+        obs = initial_obs
+        step = 0
+        while not np.all(done) and step < cfg.overrides.epoch_length:
+            action = agent.act(obs, batched=True)
+            # repeat action model_env.dynamics_model.model.num_members times
+            if action.shape[0] == 1:
+                action = np.repeat(action, elite_ensemble_size, axis=0)
+            obs, _, new_done, model_state = model_env.step(
+                action, model_state, sample=False
+            )
+            reward = -f_net(
+                torch.cat(
+                    (
+                        torch.from_numpy(obs),
+                        torch.from_numpy(action),
+                    ),
+                    dim=1,
+                )
+                .float()
+                .to(cfg.device)
+            )
+            # Set reward to 0 where done is True, otherwise set it to a specific value
+            done = np.where(done, 1.0, new_done)
+            reward = torch.where(
+                torch.from_numpy(done.flatten()).bool().to(cfg.device),
+                torch.tensor(0.0).to(cfg.device),
+                reward,
+            )
+            rewards[episode] += reward
+            step += 1
+    rewards /= cfg.overrides.epoch_length
+    rewards_mean = torch.mean(torch.mean(rewards, dim=1), dim=0).item()
+    return rewards_mean, None
 
 
 def rollout_model_and_populate_sac_buffer(

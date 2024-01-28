@@ -9,6 +9,13 @@ log_frequency_agent: 1000
 save_video: false
 debug_mode: false
 
+# JUNTAO PARAMS FROM ANTMAZE
+clip_md: false
+wd_md: false
+decay_lr: false
+# use ema of actor weights to evaluate
+ema: false
+
 use_yuda_default: false
 add_exp_to_replay_buffer: false
 use_policy_buffer_adv_update: false
