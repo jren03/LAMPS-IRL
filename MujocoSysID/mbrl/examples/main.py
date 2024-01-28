@@ -2,6 +2,7 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
+import attr
 import hydra
 import numpy as np
 import omegaconf
@@ -13,6 +14,9 @@ import mbrl.algorithms.planet as planet
 import mbrl.algorithms.lamps as lamps
 import mbrl.algorithms.sysid as sysid
 from mbrl.util.common import PrintColors
+
+from termcolor import cprint
+from pygit2 import Repository
 # import mbrl.algorithms.mm as mm
 
 import mbrl.util.env
@@ -42,6 +46,9 @@ def run(cfg: omegaconf.DictConfig):
     print(
         f"Making {cfg.overrides.num_steps / cfg.freq_eval} evaluations{PrintColors.ENDC}"
     )
+
+    branch_name = Repository(".").head.shorthand
+    cprint("On branch: " + branch_name, "magenta", attrs=["bold"])
 
     if cfg.debug_mode:
         print(PrintColors.WARNING + "Running in debug mode" + PrintColors.ENDC)
