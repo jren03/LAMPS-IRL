@@ -676,12 +676,17 @@ def train(
                 mean_reward = mean_reward * 100
                 # try:
                 real_env_eval_mean = evaluate(env, eval_agent, num_episodes=15, cfg=cfg)
-                true_reset_eval_mean, _ = eval_agent_in_model(
-                    model_env, test_env, f_net, eval_agent, 5, cfg
-                )
-                mixed_reset_eval_mean, _ = eval_agent_in_model(
-                    model_env, mixed_reset_env, f_net, eval_agent, 5, cfg
-                )
+                try:
+                    true_reset_eval_mean, _ = eval_agent_in_model(
+                        model_env, test_env, f_net, eval_agent, 5, cfg
+                    )
+                    mixed_reset_eval_mean, _ = eval_agent_in_model(
+                        model_env, mixed_reset_env, f_net, eval_agent, 5, cfg
+                    )
+                except Exception as e:
+                    print(e)
+                    breakpoint()
+
                 logger.log_data(
                     mbrl.constants.RESULTS_LOG_NAME,
                     {
