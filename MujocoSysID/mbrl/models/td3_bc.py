@@ -1,4 +1,5 @@
 import copy
+from math import isnan
 import numpy as np
 import torch
 import torch.nn as nn
@@ -270,12 +271,23 @@ class TD3_BC(nn.Module):
                 1 - pi_data
             )
 
+            if torch.isnan(actor_loss).any():
+                print("nan in actor loss")
+                breakpoint()
+
             # Optimize the actor
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
             self.actor_optimizer.step()
             if self.schedule:
                 self.actor_scheduler.step()
+
+            for param, target_param in zip(
+                self.actor.parameters(), self.actor_target.parameters()
+            ):
+                if torch.isnan(param).any() or torch.isnan(target_param).any():
+                    print("nan in actor")
+                    breakpoint()
 
             # Update the frozen target models
             for param, target_param in zip(

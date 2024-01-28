@@ -166,6 +166,11 @@ class ModelTrainer:
             batch_losses: List[float] = []
             for batch in tqdm.tqdm(dataset_train, disable=disable_tqdm, leave=False):
                 loss, meta = self.model.update(batch, self.optimizer)
+                for name, param in self.model.named_parameters():
+                    if torch.isnan(param).any():
+                        print(f"NaN param detected, skipping batch: {name}")
+                        breakpoint()
+
                 if self.schedule:
                     self.scheduler.step()
                 batch_losses.append(loss)
