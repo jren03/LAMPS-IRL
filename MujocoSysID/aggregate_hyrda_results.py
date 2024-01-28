@@ -11,8 +11,11 @@ def is_non_zero_file(fpath):
     return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 
 
-def main(env_name, override, partition, date):
-    algs = ["lamps", "sysid", "mbpo"]
+def main(env_name, override, partition, date, algs_override=None):
+    if algs_override is not None:
+        algs = [algs_override]
+    else:
+        algs = ["lamps", "sysid", "mbpo"]
     target_entries = 15
 
     for alg in algs:
@@ -89,6 +92,7 @@ if __name__ == "__main__":
         help="Name of the environment",
     )
     parser.add_argument("-o", "--override", action="store_true", default=False)
+    parser.add_argument("-a", type=str, default=None)
     parser.add_argument("-p", type=str, default="result")
     parser.add_argument("-d", type=str, required=True)
     args = parser.parse_args()
@@ -110,4 +114,4 @@ if __name__ == "__main__":
         env_name = "antmaze-large-play-v2"
     if "truncated" not in env_name:
         env_name = f"gym___{env_name}"
-    main(env_name, args.override, args.p, args.d)
+    main(env_name, args.override, args.p, args.d, args.a)
