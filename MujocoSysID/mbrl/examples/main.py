@@ -13,6 +13,8 @@ import mbrl.algorithms.lamps_am as lamps_am
 import mbrl.algorithms.model_pretraining as mp
 import mbrl.util.env
 
+from pygit2 import Repository
+
 
 @hydra.main(config_path="conf", config_name="main")
 def run(cfg: omegaconf.DictConfig):
@@ -45,6 +47,9 @@ def run(cfg: omegaconf.DictConfig):
         color="green",
         attrs=["bold"],
     )
+
+    branch_name = Repository(".").head.shorthand
+    cprint("On branch: " + branch_name, "magenta", attrs=["bold"])
 
     if cfg.algorithm.name == "lamps_am":
         return lamps_am.train(env, test_env, term_fn, cfg, silent=cfg.silent)
