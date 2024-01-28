@@ -80,8 +80,8 @@ if __name__ == "__main__":
         help="Name of the environment",
     )
     parser.add_argument("-o", "--override", action="store_true", default=True)
-    parser.add_argument("-p", type=str, default="result")
-    parser.add_argument("-a", type=str, default="lamps_am_psdp")
+    parser.add_argument("-p", type=str, default="default")
+    parser.add_argument("-a", type=str, default="lamps_am")
     parser.add_argument("-d", type=str, required=True)
     args = parser.parse_args()
 
