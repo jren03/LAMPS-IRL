@@ -1,6 +1,7 @@
 import os
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 
@@ -19,8 +20,10 @@ from mbrl.util.oadam import OAdam
 from mbrl.util.common import PrintColors as PC
 
 
-class SAC(object):
+# class SAC(object):
+class SAC(nn.Module):
     def __init__(self, num_inputs, relabel_samples, action_space, args):
+        super(SAC, self).__init__()
         self.args = args
         self.gamma = args.gamma
         self.tau = args.tau

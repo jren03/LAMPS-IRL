@@ -40,7 +40,7 @@ def run(cfg: omegaconf.DictConfig):
 
     print(f"seed: {cfg.seed}")
     print(
-        f"Making {cfg.overrides.num_steps / cfg.eval_frequency} evaluations{PrintColors.ENDC}"
+        f"Making {cfg.overrides.num_steps / cfg.freq_eval} evaluations{PrintColors.ENDC}"
     )
 
     if cfg.debug_mode:

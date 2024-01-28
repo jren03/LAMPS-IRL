@@ -4,13 +4,15 @@
 # LICENSE file in the root directory of this source tree.
 import numpy as np
 import torch
+import torch.nn as nn
 
 import mbrl.third_party.pytorch_sac_pranz24 as pytorch_sac
 
 from .core import Agent
 
 
-class SACAgent(Agent):
+# class SACAgent(Agent, nn.Module):
+class SACAgent(nn.Module):
     """A Soft-Actor Critic agent.
 
     This class is a wrapper for
@@ -22,6 +24,7 @@ class SACAgent(Agent):
     """
 
     def __init__(self, sac_agent: pytorch_sac.SAC):
+        super(SACAgent, self).__init__()
         self.sac_agent = sac_agent
 
     def act(
@@ -44,3 +47,21 @@ class SACAgent(Agent):
             return self.sac_agent.select_action(
                 obs, batched=batched, evaluate=not sample
             )
+
+    def plan(self, obs: np.ndarray, **_kwargs) -> np.ndarray:
+        """Issues a sequence of actions given an observation.
+
+        Unless overridden by a child class, this will be equivalent to :meth:`act`.
+
+        Args:
+            obs (np.ndarray): the observation for which the sequence is needed.
+
+        Returns:
+            (np.ndarray): a sequence of actions.
+        """
+
+        return self.act(obs, **_kwargs)
+
+    def reset(self):
+        """Resets any internal state of the agent."""
+        pass

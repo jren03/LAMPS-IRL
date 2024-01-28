@@ -38,7 +38,7 @@ sac_schedule:
   m1: 20_000
   m2: 100_000
 
-eval_frequency: 10000
+freq_eval: 10000
 
 optim_oadam: false
 sac_in_real: false

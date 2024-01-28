@@ -30,15 +30,16 @@ from mbrl.util.common import gradient_penalty, PrintColors
 from mbrl.util.discriminator_replay_buffer import DiscriminatorReplayBuffer
 
 import torch.nn as nn
+from mbrl.util.ema_pytorch import EMA
 
 import d4rl
 from tqdm import tqdm
-from ema_pytorch import EMA
 from torch.optim import Adam
 
 import stable_baselines3 as sb3
 from pathlib import Path
 import warnings
+from termcolor import cprint
 
 
 MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
@@ -46,35 +47,42 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("rollout_length", "RL", "int"),
     ("sac_reset_ratio", "SRR", "float"),
     ("disc_loss", "DL", "float"),
+    ("true_reset_eval_mean", "TR", "float"),
+    ("mixed_reset_eval_mean", "MR", "float"),
+    ("real_env_eval_mean", "RE", "float"),
 ]
 
 
 def eval_agent_in_model(
     model_env: mbrl.models.ModelEnv,
-    test_env: gym.Env,
-    f_net: nn.Module,
+    replay_buffer: mbrl.util.ReplayBuffer,
     agent: SACAgent,
     num_episodes: int,
     cfg: omegaconf.DictConfig,
+    f_net: nn.Module = None,
 ):
-    # elite_ensemble_size = model_env.dynamics_model.model.num_members
     elite_ensemble_size = model_env.dynamics_model.num_elites
-    rewards = torch.zeros(num_episodes, elite_ensemble_size).to(cfg.device)
-    for episode in range(num_episodes):
-        initial_obs = test_env.reset().reshape(1, -1)
-        model_state = model_env.reset(initial_obs_batch=initial_obs, return_as_np=True)
-        model_state["obs"] = model_state["obs"].repeat((elite_ensemble_size, 1))
-        done = False
-        obs = initial_obs
-        step = 0
-        while not np.all(done) and step < cfg.overrides.epoch_length:
-            action = agent.act(obs, batched=True)
-            # repeat action model_env.dynamics_model.model.num_members times
-            if action.shape[0] == 1:
-                action = np.repeat(action, elite_ensemble_size, axis=0)
-            obs, _, new_done, model_state = model_env.step(
-                action, model_state, sample=False
-            )
+    if f_net:
+        rewards = torch.zeros((num_episodes * elite_ensemble_size)).to(cfg.device)
+    else:
+        rewards = np.zeros((num_episodes * elite_ensemble_size, 1))
+    batch = replay_buffer.sample(num_episodes * elite_ensemble_size)
+    initial_obs, *_ = cast(mbrl.types.TransitionBatch, batch).astuple()
+    model_state = model_env.reset(
+        initial_obs_batch=cast(np.ndarray, initial_obs), return_as_np=True
+    )
+    done = False
+    obs = initial_obs
+    step = 0
+    while not np.all(done) and step < cfg.overrides.epoch_length:
+        action = agent.act(obs, batched=True)
+        # repeat action model_env.dynamics_model.model.num_members times
+        if action.shape[0] == 1:
+            action = np.repeat(action, elite_ensemble_size, axis=0)
+        obs, reward, new_done, model_state = model_env.step(
+            action, model_state, sample=False
+        )
+        if f_net:
             reward = -f_net(
                 torch.cat(
                     (
@@ -86,17 +94,24 @@ def eval_agent_in_model(
                 .float()
                 .to(cfg.device)
             )
-            # Set reward to 0 where done is True, otherwise set it to a specific value
-            done = np.where(done, 1.0, new_done)
+        # Set reward to 0 where done is True, otherwise set it to a specific value
+        done = np.where(done, 1.0, new_done)
+        if f_net:
             reward = torch.where(
                 torch.from_numpy(done.flatten()).bool().to(cfg.device),
                 torch.tensor(0.0).to(cfg.device),
                 reward,
             )
-            rewards[episode] += reward
-            step += 1
-    rewards /= cfg.overrides.epoch_length
-    rewards_mean = torch.mean(torch.mean(rewards, dim=1), dim=0).item()
+        else:
+            reward = np.where(done, 0.0, reward)
+        rewards += reward
+        step += 1
+    # rewards /= cfg.overrides.epoch_length
+    # rewards_mean = torch.mean(torch.mean(rewards, dim=1), dim=0).item()
+    if f_net:
+        rewards_mean = rewards.mean().item()
+    else:
+        rewards_mean = np.mean(rewards)
     return rewards_mean, None
 
 
@@ -138,28 +153,21 @@ def evaluate(
     env: gym.Env,
     agent: SACAgent,
     num_episodes: int,
-    video_recorder: VideoRecorder,
-    maze=False,
+    cfg: omegaconf.DictConfig,
 ) -> float:
     avg_episode_reward = 0
-    success = 0
     for episode in range(num_episodes):
         obs = env.reset()
-        video_recorder.init(enabled=(episode == 0))
         done = False
         episode_reward = 0
         while not done:
             action = agent.act(obs)
             obs, reward, done, _ = env.step(action)
-            video_recorder.record(env)
+            if torch.is_tensor(reward):
+                reward = reward.cpu().detach().item()
             episode_reward += reward
-        if maze:
-            success += episode_reward > 0
-            avg_episode_reward += episode_reward
-        else:
-            avg_episode_reward += episode_reward
-    if maze:
-        return avg_episode_reward / num_episodes, success / num_episodes
+        avg_episode_reward += episode_reward
+    avg_episode_reward /= cfg.overrides.epoch_length
     return avg_episode_reward / num_episodes
 
 
@@ -262,6 +270,8 @@ def train(
     agent = SACAgent(
         cast(pytorch_sac_pranz24.SAC, hydra.utils.instantiate(cfg.algorithm.agent))
     )
+    if cfg.ema:
+        agent = EMA(agent)
 
     is_maze = "maze" in cfg.overrides.env
 
@@ -417,32 +427,40 @@ def train(
     )
     updates_made = 0
     env_steps = 0
+    f_net = None
     if cfg.train_discriminator:
         if cfg.disc_ensemble:
             print(
                 f"{PrintColors.OKBLUE}Training with discriminator function ENSEMBLE{PrintColors.ENDC}"
             )
             f_net = DiscriminatorEnsemble(
-                env, n_discriminators=cfg.n_discs, reduction=cfg.disc_ensemble_reduction
+                env,
+                n_discriminators=cfg.n_discs,
+                reduction=cfg.disc_ensemble_reduction,
+                clip=cfg.clip_md,
             ).to(cfg.device)
         else:
             print(
                 f"{PrintColors.OKBLUE}Training with discriminator function REGULAR{PrintColors.ENDC}"
             )
-            f_net = Discriminator(env).to(cfg.device)
+            f_net = Discriminator(env, clip=cfg.clip_md).to(cfg.device)
         if cfg.optim_oadam:
-            f_opt = OAdam(f_net.parameters(), lr=disc_lr)
+            f_opt = OAdam(
+                f_net.parameters(),
+                lr=disc_lr,
+                weight_decay=cfg.overrides.model_wd if cfg.wd_md else 0,
+            )
         else:
             f_opt = Adam(f_net.parameters(), lr=disc_lr)
-        if cfg.disc.ema:
-            print(PrintColors.OKBLUE + "Using EMA for discriminator" + PrintColors.ENDC)
-            ema = EMA(
-                f_net,
-                update_after_step=20,
-                update_every=2,
-                inv_gamma=1,
-                power=3 / 4,
-            )
+        # if cfg.disc.ema:
+        #     print(PrintColors.OKBLUE + "Using EMA for discriminator" + PrintColors.ENDC)
+        #     ema = EMA(
+        #         f_net,
+        #         update_after_step=20,
+        #         update_every=2,
+        #         inv_gamma=1,
+        #         power=3 / 4,
+        #     )
         model_env = mbrl.models.ModelEnv(
             env, dynamics_model, termination_fn, f_net, generator=torch_generator
         )
@@ -459,6 +477,7 @@ def train(
         optim_lr=cfg.overrides.model_lr,
         weight_decay=cfg.overrides.model_wd,
         logger=None if silent else logger,
+        schedule=cfg.decay_lr,
     )
 
     best_eval_reward = -np.inf
@@ -467,6 +486,7 @@ def train(
     disc_loss = 0.0
     sac_buffer = None
 
+    cprint(f"{work_dir=}", color="magenta", attrs=["bold"])
     agent.sac_agent.reset_optimizers(cfg.optim_oadam)
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0)
     while env_steps < cfg.overrides.num_steps:
@@ -599,8 +619,10 @@ def train(
                         )
 
                 agent.sac_agent.updates_made += 1
-            if cfg.schedule_actor:
-                agent.sac_agent.step_lr()
+                if cfg.ema:
+                    agent.update()
+                if cfg.schedule_actor or cfg.decay_lr:
+                    agent.sac_agent.step_lr()
             # print(f"Time for agent training: {time.time() - start_time}")
 
             # ------ Discriminator Training ------
@@ -615,7 +637,11 @@ def train(
                 else:
                     disc_lr = cfg.disc.lr
                 if cfg.optim_oadam:
-                    f_opt = OAdam(f_net.parameters(), lr=disc_lr)
+                    f_opt = OAdam(
+                        f_net.parameters(),
+                        lr=disc_lr,
+                        weight_decay=cfg.overrides.model_wd if cfg.wd_md else 0,
+                    )
                 else:
                     f_opt = Adam(f_net.parameters(), lr=disc_lr)
 
@@ -650,10 +676,10 @@ def train(
                     disc_loss = f_expert.mean() - f_learner.mean() + 10 * gp
                     disc_loss.backward()
                     f_opt.step()
-                    if cfg.disc.ema:
-                        ema.update()
+                    # if cfg.disc.ema:
+                    #     ema.update()
                 disc_steps += 1
-                if cfg.schedule_actor:
+                if cfg.schedule_actor or cfg.decay_lr:
                     # for param in agent.sac_agent.policy_optim.param_groups:
                     #     print(param["lr"], end="\t")
                     agent.sac_agent.reset_optimizers(cfg.optim_oadam)
@@ -664,15 +690,26 @@ def train(
             # ------ Epoch ended (evaluate and save model) ------
             if (env_steps + 1) % cfg.overrides.epoch_length == 0:
                 epoch += 1
-            if (env_steps + 1) % cfg.eval_frequency == 0:
+            if (env_steps + 1) % cfg.freq_eval == 0:
                 if not is_maze:
                     # start_time = time.time()
                     avg_reward = evaluate(
                         test_env,
                         agent,
-                        cfg.algorithm.num_eval_episodes,
-                        video_recorder,
-                        is_maze,
+                        num_episodes=cfg.algorithm.num_eval_episodes,
+                        cfg=cfg,
+                    )
+                    real_env_eval_mean = evaluate(
+                        env,
+                        agent,
+                        num_episodes=cfg.algorithm.num_eval_episodes,
+                        cfg=cfg,
+                    )
+                    true_reset_eval_mean, _ = eval_agent_in_model(
+                        model_env, policy_buffer, agent, 5, cfg, f_net=f_net
+                    )
+                    mixed_reset_eval_mean, _ = eval_agent_in_model(
+                        model_env, replay_buffer, agent, 5, cfg, f_net=f_net
                     )
                     logger.log_data(
                         mbrl.constants.RESULTS_LOG_NAME,
@@ -683,6 +720,9 @@ def train(
                             "rollout_length": rollout_length,
                             "sac_reset_ratio": sac_reset_ratio,
                             "disc_loss": disc_loss,
+                            "real_env_eval_mean": real_env_eval_mean,
+                            "true_reset_eval_mean": true_reset_eval_mean,
+                            "mixed_reset_eval_mean": mixed_reset_eval_mean,
                         },
                     )
                     # print(f"Time for evaluation: {time.time() - start_time}")

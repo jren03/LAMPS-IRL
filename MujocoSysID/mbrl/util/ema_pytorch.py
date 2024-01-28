@@ -10,6 +10,8 @@ from torch.nn import Module
 from beartype import beartype
 from beartype.typing import Set, Optional
 
+from termcolor import cprint
+
 
 def exists(val):
     return val is not None
@@ -150,6 +152,11 @@ class EMA(Module):
 
         self.register_buffer("initted", torch.tensor(False))
         self.register_buffer("step", torch.tensor(0))
+
+        cprint("Doing EMA on agent", color="magenta", attrs=["bold"])
+        if hasattr(self.online_model, "sac_agent"):
+            # to support calls in lamps.py
+            self.sac_agent = self.online_model.sac_agent
 
     @property
     def model(self):

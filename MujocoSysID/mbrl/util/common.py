@@ -29,6 +29,9 @@ from .replay_buffer import (
 )
 
 
+from termcolor import cprint
+
+
 class PrintColors:
     HEADER = "\033[95m"
     OKBLUE = "\033[94m"
@@ -818,6 +821,7 @@ def create_mlp(
     output_dim: int,
     net_arch: List[int],
     activation_fn: Type[nn.Module] = nn.ReLU,
+    output_activation_fn: Optional[Type[nn.Module]] = None,
 ) -> List[nn.Module]:
     if len(net_arch) > 0:
         modules = [nn.Linear(input_dim, net_arch[0]), activation_fn()]
@@ -831,4 +835,9 @@ def create_mlp(
     if output_dim > 0:
         last_layer_dim = net_arch[-1] if len(net_arch) > 0 else input_dim
         modules.append(nn.Linear(last_layer_dim, output_dim))
+        if output_activation_fn is not None:
+            cprint(
+                f"Appending {output_activation_fn} to MLP", color="cyan", attrs=["bold"]
+            )
+            modules.append(output_activation_fn())
     return modules
