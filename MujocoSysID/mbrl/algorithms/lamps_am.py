@@ -47,6 +47,7 @@ from mbrl.util.nn_utils import gradient_penalty
 from termcolor import cprint
 
 from mbrl.util.ema_pytorch import EMA
+from pathlib import Path
 
 
 def sample(env, policy, trajs, no_regret):
@@ -401,7 +402,16 @@ def train(
     torch_generator = torch.Generator(device=cfg.device)
     if cfg.seed is not None:
         torch_generator.manual_seed(cfg.seed)
-    dynamics_model = mbrl.util.common.create_one_dim_tr_model(cfg, obs_shape, act_shape)
+
+    model_dir = Path(
+        f"/share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/model_train_dir/{env_name}"
+    )
+    dynamics_model = mbrl.util.common.create_one_dim_tr_model(
+        cfg,
+        obs_shape,
+        act_shape,
+        model_dir=model_dir if cfg.pretrained_dynamics_model else None,
+    )
     use_double_dtype = cfg.algorithm.get("normalize_double_precision", False)
     dtype = np.double if use_double_dtype else np.float32
     replay_buffer = mbrl.util.common.create_replay_buffer(
@@ -458,7 +468,7 @@ def train(
         optim_lr=cfg.overrides.model_lr,
         weight_decay=cfg.overrides.model_wd,
         logger=None if silent else logger,
-        schedule=cfg.decay_lr,
+        scheduler_config=cfg.decay_lr_scheduler if cfg.decay_lr else None,
     )
 
     mbrl.util.common.rollout_agent_trajectories(

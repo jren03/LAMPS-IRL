@@ -10,6 +10,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 import torch
 import tqdm
+import hydra
 from torch import optim as optim
 from termcolor import cprint
 
@@ -49,7 +50,8 @@ class ModelTrainer:
         weight_decay: float = 1e-5,
         optim_eps: float = 1e-8,
         logger: Optional[Logger] = None,
-        schedule: bool = False,
+        scheduler_config: Optional[Dict] = None,
+        # schedule: bool = False,
     ):
         self.model = model
         self._train_iteration = 0
@@ -71,13 +73,13 @@ class ModelTrainer:
         )
 
         self.schedule = False
-        if schedule:
+        if scheduler_config is not None:
             self.schedule = True
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=50_000, eta_min=1e-9
+            self.scheduler = hydra.utils.instantiate(
+                scheduler_config, optimizer=self.optimizer
             )
             cprint(
-                "Using cosine annealing scheduler on Model",
+                f"Using {scheduler_config._target_.split('.')[-1]} scheduler on Model",
                 color="magenta",
                 attrs=["bold"],
             )

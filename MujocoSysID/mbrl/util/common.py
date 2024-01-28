@@ -24,6 +24,7 @@ from .replay_buffer import (
 
 import sys
 import os
+from termcolor import cprint
 
 
 class PrintColors:
@@ -130,6 +131,7 @@ def create_one_dim_tr_model(
         num_elites=cfg.overrides.get("num_elites", None),
     )
     if model_dir:
+        cprint("Loading model from: " + str(model_dir), "cyan", attrs=["bold"])
         dynamics_model.load(model_dir)
 
     return dynamics_model

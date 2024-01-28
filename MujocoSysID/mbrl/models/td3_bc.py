@@ -1,10 +1,12 @@
 import copy
 from math import isnan
 import numpy as np
+from scipy import optimize
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import tqdm
+import hydra
 
 from typing import cast
 import mbrl.types
@@ -116,18 +118,30 @@ class TD3_BC(nn.Module):
         self.schedule = False
         if cfg.decay_lr:
             self.schedule = True
-            self.crtic_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.critic_optimizer,
-                T_max=cfg.overrides.num_sac_updates_per_step * 50_000,
-                eta_min=1e-9,
-            )
-            self.actor_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.actor_optimizer,
-                T_max=cfg.overrides.num_sac_updates_per_step * 50_000,
-                eta_min=1e-9,
-            )
+            if "cosine" in cfg.decay_lr_scheduler._target_.lower():
+                self.critic_scheduler = hydra.utils.instantiate(
+                    cfg.decay_lr_scheduler,
+                    optimizer=self.critic_optimizer,
+                    T_max=cfg.overrides.num_sac_updates_per_step
+                    * cfg.decay_lr_scheduler.T_max,
+                )
+                self.actor_scheduler = hydra.utils.instantiate(
+                    cfg.decay_lr_scheduler,
+                    optimizer=self.critic_optimizer,
+                    T_max=cfg.overrides.num_sac_updates_per_step
+                    * cfg.decay_lr_scheduler.T_max,
+                )
+            else:
+                self.critic_scheduler = hydra.utils.instantiate(
+                    cfg.decay_lr_scheduler,
+                    optimizer=self.critic_optimizer,
+                )
+                self.actor_scheduler = hydra.utils.instantiate(
+                    cfg.decay_lr_scheduler,
+                    optimizer=self.critic_optimizer,
+                )
             cprint(
-                "Using cosine annealing scheduler on Actor and Critic",
+                f"Using {cfg.decay_lr_scheduler._target_.split('.')[-1]} scheduler on Actor and Critic",
                 color="magenta",
                 attrs=["bold"],
             )
@@ -258,7 +272,7 @@ class TD3_BC(nn.Module):
         critic_loss.backward()
         self.critic_optimizer.step()
         if self.schedule:
-            self.crtic_scheduler.step()
+            self.critic_scheduler.step()
 
         # Delayed policy updates
         if self.total_it % self.policy_freq == 0:
