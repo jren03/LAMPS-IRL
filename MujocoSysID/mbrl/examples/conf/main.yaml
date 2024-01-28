@@ -38,16 +38,16 @@ clip_md: false
 wd_md: false
 decay_lr: false
 
-decay_lr_scheduler:
-  _target_: torch.optim.lr_scheduler.CosineAnnealingLR
-  optimizer: ???
-  T_max: 30_000
-  eta_min: 1e-6
-
 # decay_lr_scheduler:
-#   _target_: torch.optim.lr_scheduler.ExponentialLR
+#   _target_: torch.optim.lr_scheduler.CosineAnnealingLR
 #   optimizer: ???
-#   gamma: 0.9
+#   T_max: 30_000
+#   eta_min: 1e-6
+
+decay_lr_scheduler:
+  _target_: torch.optim.lr_scheduler.ExponentialLR
+  optimizer: ???
+  gamma: 0.9
 
 # model pretraining
 pretrained_dynamics_model: false
