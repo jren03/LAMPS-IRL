@@ -19,6 +19,14 @@ import mbrl.util.common
 
 VisData = Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 
+import d4rl
+import gym
+from mbrl.env.gym_wrappers import (
+    GoalWrapper,
+)
+
+from traitlets import observe
+
 
 class Visualizer:
     def __init__(
@@ -50,9 +58,11 @@ class Visualizer:
         self.cfg = mbrl.util.common.load_hydra_cfg(self.results_path)
         self.handler = mbrl.util.create_handler(self.cfg)
 
-        self.env, term_fn, reward_fn = self.handler.make_env(self.cfg)
-
-        self.reward_fn = reward_fn
+        # self.env, term_fn, reward_fn = self.handler.make_env(self.cfg)
+        env_name = self.cfg.overrides.env.lower().replace("gym___", "")
+        self.env = gym.make(env_name)
+        self.env = GoalWrapper(self.env)
+        term_fn, reward_fn = None, None
 
         self.dynamics_model = mbrl.util.common.create_one_dim_tr_model(
             self.cfg,
