@@ -10,6 +10,7 @@ import gym
 from termcolor import cprint
 
 import mbrl.algorithms.lamps_am as lamps_am
+import mbrl.algorithms.nrpi_in_pretrained as nrpi_in_pretrained
 import mbrl.algorithms.model_pretraining as mp
 import mbrl.util.env
 
@@ -55,6 +56,8 @@ def run(cfg: omegaconf.DictConfig):
         return lamps_am.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     elif cfg.algorithm.name == "model_pretraining":
         return mp.train(env, cfg)
+    elif cfg.algorithm.name == "nrpi_in_pretrained":
+        return nrpi_in_pretrained.train(env, test_env, term_fn, cfg, silent=cfg.silent)
     else:
         raise NotImplementedError
     # if cfg.algorithm.name == "pets":

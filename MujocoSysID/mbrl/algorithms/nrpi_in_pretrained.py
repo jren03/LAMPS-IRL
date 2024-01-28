@@ -2,9 +2,9 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-from ast import Not
+from ast import Dict, Not
 import os
-from typing import Optional, Sequence, cast
+from typing import Any, Optional, Sequence, cast
 
 import gym
 import hydra.utils
@@ -44,6 +44,7 @@ from mbrl.util.oadam import OAdam
 from stable_baselines3.common.evaluation import evaluate_policy
 from mbrl.util.nn_utils import gradient_penalty
 from pathlib import Path
+from termcolor import cprint
 
 
 def sample(env, policy, trajs, no_regret):
@@ -126,17 +127,25 @@ def rollout_model_and_populate_sac_buffer(
 
 def step_and_sample_from_model_env(
     model_env: mbrl.models.ModelEnv,
-    model_state: Optional[mbrl.types.ModelEnvState],
-    obs: np.ndarray,
+    model_state: Any,
+    done: Any,
     agent: SACAgent,
     replay_buffer: Optional[mbrl.util.ReplayBuffer] = None,
 ):
-    action = agent.act(model_state["observations"], sample=True, batched=False)
-    next_obs, reward, done, model_state = model_env.step(
+    obs = model_state["obs"].cpu()
+    action = agent.act(obs, sample=True, batched=True)
+    next_obs, reward, pred_done, model_state = model_env.step(
         action, model_state, sample=True
     )
     if replay_buffer is not None:
-        replay_buffer.add_batch(obs, action, next_obs, reward, done)
+        replay_buffer.add_batch(
+            obs[~done],
+            action[~done],
+            next_obs[~done],
+            reward[~done, 0],
+            pred_done[~done, 0],
+        )
+    done |= pred_done.squeeze()
     return next_obs, reward, done, model_state
 
 
@@ -161,7 +170,14 @@ def train(
     log_interval = 5
 
     env_name = cfg.overrides.env.lower().replace("gym___", "")
-    expert_dataset, expert_sa_pairs, qpos, qvel, goals = fetch_demos(env_name)
+    (
+        expert_dataset,
+        expert_sa_pairs,
+        qpos,
+        qvel,
+        goals,
+        expert_reset_states,
+    ) = fetch_demos(env_name, cfg)
     expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
     if "maze" in env_name:
@@ -203,10 +219,12 @@ def train(
         "pi_replay_buffer": pi_replay_buffer,
         "env": env,
         "f": f_net,
+        "cfg": cfg,
     }
     agent = TD3_BC(**kwargs)
-    for _ in range(1):
-        agent.learn(total_timesteps=int(1e4), bc=True)
+    if cfg.bc_init:
+        for _ in range(1):
+            agent.learn(total_timesteps=int(1e4), bc=True)
     # mean_reward, std_reward = evaluate_policy(agent, test_env, n_eval_episodes=25)
     # print(100 * mean_reward)
 
@@ -231,8 +249,9 @@ def train(
         torch_generator.manual_seed(cfg.seed)
 
     model_dir = Path(
-        "/share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/model_train_dir/antmaze-large-diverse-v2"
+        f"/share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/model_train_dir/{env_name}"
     )
+    cprint(f"Loading model from {model_dir}", color="cyan", attrs=["bold"])
     dynamics_model = mbrl.util.common.create_one_dim_tr_model(
         cfg,
         env.observation_space.shape,
@@ -270,6 +289,9 @@ def train(
     env_steps = 0
     # ---------------------------------- LAMPS END ------------------------------------
 
+    # -------------------------------NRPI IN PRETRAINED--------------------------------
+    elite_ensemble_size = model_env.dynamics_model.num_elites
+
     # ---------------------------------- ORIGINAL FILTER LOOP --------------------------
     epoch = 0
     env_steps = 0
@@ -282,10 +304,11 @@ def train(
         model_state = None
         # for step in range(pi_steps):
         for epoch in range(cfg.overrides.epoch_length):
-            if epoch == 0 or done:
-                obs, done = env.reset(), False
-                if len(obs.shape) == 1:
-                    obs = obs[np.newaxis, :]
+            if epoch == 0 or done.all():
+                obs = env.reset()
+                obs = obs.reshape(1, -1)
+                obs = np.repeat(obs, elite_ensemble_size, axis=0)
+                done = np.zeros(obs.shape[0], dtype=bool)
                 model_state = model_env.reset(
                     initial_obs_batch=cast(np.ndarray, obs), return_as_np=True
                 )
@@ -293,6 +316,7 @@ def train(
             next_obs, reward, done, model_state = step_and_sample_from_model_env(
                 model_env,
                 model_state,
+                done,
                 agent,
                 replay_buffer=agent.pi_replay_buffer,
             )
