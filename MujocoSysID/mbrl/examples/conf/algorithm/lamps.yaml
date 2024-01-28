@@ -37,3 +37,4 @@ agent:
     hidden_size: ${overrides.sac_hidden_size}
     device: ${device}
     lr: ${overrides.sac_lr}
+    normalize_obs: ${normalize_obs}

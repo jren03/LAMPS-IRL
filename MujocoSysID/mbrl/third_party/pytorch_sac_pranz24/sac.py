@@ -11,7 +11,28 @@ from mbrl.third_party.pytorch_sac_pranz24.model import (
 )
 from mbrl.third_party.pytorch_sac_pranz24.utils import hard_update, soft_update
 
+import numpy as np
 from termcolor import cprint
+
+
+class RunningNormalizer:
+    def __init__(self, size, device):
+        self.n = torch.zeros(size, device=device)
+        self.mean = torch.zeros(size, device=device)
+        self.mean_diff = torch.zeros(size, device=device)
+        self.var = torch.zeros(size, device=device)
+
+    def observe(self, x):
+        x = x.float()
+        self.n += 1.0
+        last_mean = self.mean.clone()
+        self.mean += (x - last_mean) / self.n
+        self.mean_diff += (x - last_mean) * (x - self.mean)
+        self.var = (self.mean_diff / self.n).clamp(min=1e-2)
+
+    def normalize(self, inputs):
+        obs_std = torch.sqrt(self.var)
+        return (inputs - self.mean) / obs_std
 
 
 class SAC(object):
@@ -65,6 +86,10 @@ class SAC(object):
             ).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
 
+        if args.normalize_obs:
+            cprint("Using normalizer on SAC", attrs=["bold"])
+            self.running_state = RunningNormalizer(num_inputs, device=self.device)
+
     def select_action(self, state, batched=False, evaluate=False):
         state = torch.FloatTensor(state)
         if not batched:
@@ -103,6 +128,11 @@ class SAC(object):
         mask_batch = torch.FloatTensor(mask_batch).to(self.device).unsqueeze(1)
         if reverse_mask:
             mask_batch = mask_batch.logical_not()
+
+        if self.normalize_obs:
+            self.running_state.observe(state_batch)
+            state_batch = self.running_state.normalize(state_batch)
+            next_state_batch = self.running_state.normalize(next_state_batch)
 
         with torch.no_grad():
             next_state_action, next_state_log_pi, _ = self.policy.sample(
@@ -216,6 +246,13 @@ class SAC(object):
 
         expert_state_batch = torch.FloatTensor(expert_state_batch).to(self.device)
         expert_action_batch = torch.FloatTensor(expert_action_batch).to(self.device)
+
+        if self.normalize_obs:
+            self.running_state.observe(state_batch)
+            self.running_state.observe(expert_state_batch)
+            state_batch = self.running_state.normalize(state_batch)
+            next_state_batch = self.running_state.normalize(next_state_batch)
+            expert_state_batch = self.running_state.normalize(expert_state_batch)
 
         if reverse_mask:
             mask_batch = mask_batch.logical_not()
