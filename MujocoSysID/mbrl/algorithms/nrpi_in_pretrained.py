@@ -43,6 +43,7 @@ from mbrl.models.td3_bc import TD3_BC
 from mbrl.util.oadam import OAdam
 from stable_baselines3.common.evaluation import evaluate_policy
 from mbrl.util.nn_utils import gradient_penalty
+from pathlib import Path
 
 
 def sample(env, policy, trajs, no_regret):
@@ -121,6 +122,22 @@ def rollout_model_and_populate_sac_buffer(
         )
         obs = pred_next_obs
         accum_dones |= pred_dones.squeeze()
+
+
+def step_and_sample_from_model_env(
+    model_env: mbrl.models.ModelEnv,
+    model_state: Optional[mbrl.types.ModelEnvState],
+    obs: np.ndarray,
+    agent: SACAgent,
+    replay_buffer: Optional[mbrl.util.ReplayBuffer] = None,
+):
+    action = agent.act(model_state["observations"], sample=True, batched=False)
+    next_obs, reward, done, model_state = model_env.step(
+        action, model_state, sample=True
+    )
+    if replay_buffer is not None:
+        replay_buffer.add_batch(obs, action, next_obs, reward, done)
+    return next_obs, reward, done, model_state
 
 
 def train(
@@ -212,19 +229,22 @@ def train(
     torch_generator = torch.Generator(device=cfg.device)
     if cfg.seed is not None:
         torch_generator.manual_seed(cfg.seed)
-    dynamics_model = mbrl.util.common.create_one_dim_tr_model(cfg, obs_shape, act_shape)
+
+    model_dir = Path(
+        "/share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/model_train_dir/antmaze-large-diverse-v2"
+    )
+    dynamics_model = mbrl.util.common.create_one_dim_tr_model(
+        cfg,
+        env.observation_space.shape,
+        env.action_space.shape,
+        model_dir=model_dir,
+    )
+    model_env = mbrl.models.ModelEnv(
+        env, dynamics_model, termination_fn, None, generator=torch_generator
+    )
     use_double_dtype = cfg.algorithm.get("normalize_double_precision", False)
     dtype = np.double if use_double_dtype else np.float32
     replay_buffer = mbrl.util.common.create_replay_buffer(
-        cfg,
-        obs_shape,
-        act_shape,
-        rng=rng,
-        obs_type=dtype,
-        action_type=dtype,
-        reward_type=dtype,
-    )
-    policy_buffer = mbrl.util.common.create_replay_buffer(
         cfg,
         obs_shape,
         act_shape,
@@ -259,17 +279,30 @@ def train(
     tbar = tqdm(range(500_000), ncols=0, mininterval=10)
     while env_steps < 500_000:
         obs, done = None, False
+        model_state = None
         # for step in range(pi_steps):
         for epoch in range(cfg.overrides.epoch_length):
             if epoch == 0 or done:
                 obs, done = env.reset(), False
-            next_obs, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
-                env,
-                obs,
+                if len(obs.shape) == 1:
+                    obs = obs[np.newaxis, :]
+                model_state = model_env.reset(
+                    initial_obs_batch=cast(np.ndarray, obs), return_as_np=True
+                )
+
+            next_obs, reward, done, model_state = step_and_sample_from_model_env(
+                model_env,
+                model_state,
                 agent,
-                {},
                 replay_buffer=agent.pi_replay_buffer,
             )
+            # next_obs, _, done, _ = mbrl.util.common.step_env_and_add_to_buffer(
+            #     model_env,
+            #     obs,
+            #     agent,
+            #     {},
+            #     replay_buffer=agent.pi_replay_buffer,
+            # )
 
             # for _ in range(cfg.overrides.num_sac_updates_per_step):
             agent.step(bc=False)
