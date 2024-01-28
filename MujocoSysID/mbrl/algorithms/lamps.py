@@ -167,7 +167,7 @@ def evaluate(
                 reward = reward.cpu().detach().item()
             episode_reward += reward
         avg_episode_reward += episode_reward
-    avg_episode_reward /= cfg.overrides.epoch_length
+    # avg_episode_reward /= cfg.overrides.epoch_length
     return avg_episode_reward / num_episodes
 
 
