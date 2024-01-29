@@ -267,11 +267,15 @@ class TD3_BC(nn.Module):
             current_Q2, target_Q
         )
 
+        if torch.isnan(critic_loss):
+            print("nan in critic loss")
+            breakpoint()
+
         # Optimize the critic
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
-        if self.schedule:
+        if self.schedule and not bc:
             self.critic_scheduler.step()
 
         # Delayed policy updates
@@ -293,15 +297,8 @@ class TD3_BC(nn.Module):
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
             self.actor_optimizer.step()
-            if self.schedule:
+            if self.schedule and not bc:
                 self.actor_scheduler.step()
-
-            for param, target_param in zip(
-                self.actor.parameters(), self.actor_target.parameters()
-            ):
-                if torch.isnan(param).any() or torch.isnan(target_param).any():
-                    print("nan in actor")
-                    breakpoint()
 
             # Update the frozen target models
             for param, target_param in zip(
@@ -310,6 +307,9 @@ class TD3_BC(nn.Module):
                 target_param.data.copy_(
                     self.tau * param.data + (1 - self.tau) * target_param.data
                 )
+                if torch.isnan(param).any() or torch.isnan(target_param).any():
+                    print("nan in actor")
+                    breakpoint()
 
             for param, target_param in zip(
                 self.actor.parameters(), self.actor_target.parameters()
@@ -317,6 +317,9 @@ class TD3_BC(nn.Module):
                 target_param.data.copy_(
                     self.tau * param.data + (1 - self.tau) * target_param.data
                 )
+                if torch.isnan(param).any() or torch.isnan(target_param).any():
+                    print("nan in actor")
+                    breakpoint()
 
     def save(self, filename):
         torch.save(self.critic.state_dict(), filename + "_critic")
