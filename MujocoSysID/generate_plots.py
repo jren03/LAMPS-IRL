@@ -146,7 +146,15 @@ def main(env_abbrv, env_name, steps=15):
             # scores = []
             appended = False
             for csv in csvs:
-                reset_version = csv.stem.split("_")[-2]
+                for rv in reset_versions:
+                    if rv in csv.stem:
+                        reset_version = rv
+                        break
+                else:
+                    print(f"Couldn't find reset version in {csv}")
+                    continue
+                # reset_version = csv.stem.split("_")[-2]
+                # breakpoint()
                 data = pd.read_csv(csv).episode_reward.to_numpy()
                 shaky = "shaky" in csv.name
                 print(
@@ -157,7 +165,12 @@ def main(env_abbrv, env_name, steps=15):
                 )
 
             for csv in csvs:
-                reset_version = csv.stem.split("_")[-2]
+                for rv in reset_versions:
+                    if rv in csv.stem:
+                        reset_version = rv
+                        break
+                else:
+                    continue
                 scores = reset_version_to_scores[reset_version]
                 steps = reset_version_to_steps[reset_version]
                 if steps == 1:
@@ -174,7 +187,7 @@ def main(env_abbrv, env_name, steps=15):
                     )
                     print(f"{len(scores[-1])}")
                     appended = True
-                partition = csv.stem.split("_")[-1]
+                partition = csv.stem.split(reset_version)[-1].rstrip("_")
 
             if not appended:
                 print(f"Skipping {alg}")
@@ -241,7 +254,7 @@ def main(env_abbrv, env_name, steps=15):
     plt.suptitle(f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble) + ", " + partition)
     plt.tight_layout()
     plt.savefig(f"plots/{env_name}.png", bbox_inches="tight")
-    print("SAVED")
+    print(f"SAVED to plots/{env_name}.png")
 
 
 if __name__ == "__main__":

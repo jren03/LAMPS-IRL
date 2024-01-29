@@ -485,7 +485,7 @@ def train(
     # ---------------------------------- ORIGINAL FILTER LOOP --------------------------
     env_steps = 0
     disc_steps = 0
-    print(f"Training {env_name}")
+    print(f"Training {env_name}, saving to {work_dir}")
     tbar = tqdm(range(cfg.overrides.num_steps), ncols=0, mininterval=10)
     epoch = 0
     while env_steps < cfg.overrides.num_steps:
