@@ -32,7 +32,6 @@ disc_ensemble_reduction: "min"
 
 disc_binary_reward: false
 
-sac_schedule_lr: false
 schedule_sac_ratio: true
 sac_schedule:
   start_ratio: 0.5
