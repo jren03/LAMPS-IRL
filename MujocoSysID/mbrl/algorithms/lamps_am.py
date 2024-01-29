@@ -635,6 +635,10 @@ def train(
                 updates_made += 1
                 if cfg.ema:
                     ema_agent.update()
+                for param in agent.actor.parameters():
+                    if torch.isnan(param).any():
+                        print("Actor has nan params")
+                        breakpoint()
 
             if (
                 cfg.train_discriminator

@@ -187,11 +187,23 @@ class EMA(Module):
         for (_, ma_params), (_, current_params) in zip(
             self.get_params_iter(self.ema_model), self.get_params_iter(self.model)
         ):
+            if torch.isnan(ma_params).any():
+                print("nan in ma_params")
+                breakpoint()
+            if torch.isnan(current_params).any():
+                print("nan in current_params")
+                breakpoint()
             copy(ma_params.data, current_params.data)
 
         for (_, ma_buffers), (_, current_buffers) in zip(
             self.get_buffers_iter(self.ema_model), self.get_buffers_iter(self.model)
         ):
+            if torch.isnan(ma_params).any():
+                print("nan in ma_params")
+                breakpoint()
+            if torch.isnan(current_params).any():
+                print("nan in current_params")
+                breakpoint()
             copy(ma_buffers.data, current_buffers.data)
 
     def copy_params_from_ema_to_model(self):
@@ -200,11 +212,23 @@ class EMA(Module):
         for (_, ma_params), (_, current_params) in zip(
             self.get_params_iter(self.ema_model), self.get_params_iter(self.model)
         ):
+            if torch.isnan(ma_params).any():
+                print("nan in ma_params")
+                breakpoint()
+            if torch.isnan(current_params).any():
+                print("nan in current_params")
+                breakpoint()
             copy(current_params.data, ma_params.data)
 
         for (_, ma_buffers), (_, current_buffers) in zip(
             self.get_buffers_iter(self.ema_model), self.get_buffers_iter(self.model)
         ):
+            if torch.isnan(ma_params).any():
+                print("nan in ma_params")
+                breakpoint()
+            if torch.isnan(current_params).any():
+                print("nan in current_params")
+                breakpoint()
             copy(current_buffers.data, ma_buffers.data)
 
     def get_current_decay(self):
