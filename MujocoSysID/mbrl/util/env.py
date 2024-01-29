@@ -106,7 +106,7 @@ def _legacy_make_env(
     if cfg.shaky:
         if cfg.p_tremble != -1:
             p_tremble = float(cfg.p_tremble)
-        if "maze" in env_name:
+        elif "maze" in env_name:
             p_tremble = 0.0
         elif "ant" in env_name:
             p_tremble = 0.01
