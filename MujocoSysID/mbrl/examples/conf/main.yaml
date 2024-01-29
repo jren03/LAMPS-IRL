@@ -16,6 +16,9 @@ decay_lr: false
 # use ema of actor weights to evaluate
 ema: false
 
+# debug eval_agent_in_model
+eval_agent_in_model: false
+
 use_yuda_default: false
 add_exp_to_replay_buffer: false
 use_policy_buffer_adv_update: false

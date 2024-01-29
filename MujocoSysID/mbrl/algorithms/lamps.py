@@ -699,18 +699,24 @@ def train(
                         num_episodes=cfg.algorithm.num_eval_episodes,
                         cfg=cfg,
                     )
-                    real_env_eval_mean = evaluate(
-                        env,
-                        agent,
-                        num_episodes=cfg.algorithm.num_eval_episodes,
-                        cfg=cfg,
-                    )
-                    true_reset_eval_mean, _ = eval_agent_in_model(
-                        model_env, policy_buffer, agent, 5, cfg, f_net=f_net
-                    )
-                    mixed_reset_eval_mean, _ = eval_agent_in_model(
-                        model_env, replay_buffer, agent, 5, cfg, f_net=f_net
-                    )
+
+                    if cfg.eval_agent_in_model:
+                        real_env_eval_mean = evaluate(
+                            env,
+                            agent,
+                            num_episodes=cfg.algorithm.num_eval_episodes,
+                            cfg=cfg,
+                        )
+                        true_reset_eval_mean, _ = eval_agent_in_model(
+                            model_env, policy_buffer, agent, 5, cfg, f_net=f_net
+                        )
+                        mixed_reset_eval_mean, _ = eval_agent_in_model(
+                            model_env, replay_buffer, agent, 5, cfg, f_net=f_net
+                        )
+                    else:
+                        real_env_eval_mean = (
+                            true_reset_eval_mean
+                        ) = mixed_reset_eval_mean = 0
                     logger.log_data(
                         mbrl.constants.RESULTS_LOG_NAME,
                         {
