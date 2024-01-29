@@ -403,9 +403,14 @@ def train(
     if cfg.seed is not None:
         torch_generator.manual_seed(cfg.seed)
 
-    model_dir = Path(
-        f"/share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/model_train_dir/{env_name}"
-    )
+    if "guest" in str(Path(Path.cwd())):
+        model_dir = Path(
+            f"/home/guest/dev/juntao/LAMPS-IRL/MujocoSysID/model_train_dir/{env_name}"
+        )
+    else:
+        model_dir = Path(
+            f"/share/portal/jlr429/pessimistic-irl/LAMPS-IRL/MujocoSysID/model_train_dir/{env_name}"
+        )
     dynamics_model = mbrl.util.common.create_one_dim_tr_model(
         cfg,
         obs_shape,
