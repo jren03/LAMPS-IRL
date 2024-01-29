@@ -56,6 +56,9 @@ def main(env_name, override, partition, date, alg_override):
                     hydra_yml = yaml.safe_load(stream)
                     seed = hydra_yml.get("seed")
                     reset_version = hydra_yml.get("reset_version").replace("_", "-")
+                    decay = hydra_yml.get("decay_lr_scheduler").get("_target_")
+                    if "exp" in decay.lower():
+                        print(f"Skipping {results_file} because it has exp decay")
                 except yaml.YAMLError as exc:
                     print(exc)
 
