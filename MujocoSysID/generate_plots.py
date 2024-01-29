@@ -82,7 +82,7 @@ def main(env_abbrv, env_name, steps=15):
         "ant": 0.01,
         "hc": 0.075,
         "hop": 0.01,
-        "walk": 0.05,
+        "walk": 0.01,
         "hum": 0.025,
     }
 
@@ -92,6 +92,7 @@ def main(env_abbrv, env_name, steps=15):
 
     # steps = 10
     sz = 10_000
+    partition = ""
     for alg in algs_to_colors.keys():
         if alg == "exp":
             plt.plot(
@@ -116,6 +117,7 @@ def main(env_abbrv, env_name, steps=15):
                         np.concatenate([data, np.ones(steps - len(data)) * data[-1]])
                     )
                     print(f"{len(scores[-1])}")
+                partition = csv.stem.split("_")[-1]
             if scores == []:
                 print(f"Skipping {alg}")
                 continue
@@ -149,7 +151,7 @@ def main(env_abbrv, env_name, steps=15):
     plt.ylabel("IQM of $J(\\pi)$")
     plt.xlabel("Env. Steps")
     plt.xticks(rotation=45)
-    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble))
+    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble) + ", " + partition)
     plt.savefig(f"plots/{env_name}.png", bbox_inches="tight")
     print("SAVED")
 

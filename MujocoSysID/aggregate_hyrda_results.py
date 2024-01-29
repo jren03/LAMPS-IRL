@@ -15,7 +15,7 @@ def main(env_name, override, partition, date, algs_override=None):
     if algs_override is not None:
         algs = [algs_override]
     else:
-        algs = ["lamps", "sysid", "mbpo"]
+        algs = ["sysid", "mbpo", "lamps"]
     target_entries = 15
 
     for alg in algs:
@@ -66,19 +66,43 @@ def main(env_name, override, partition, date, algs_override=None):
                     hydra_yml = yaml.safe_load(stream)
                     seed = hydra_yml.get("seed")
                     shaky = hydra_yml.get("shaky")
+                    model_lr = hydra_yml.get("overrides").get("model_lr")
+                    if model_lr == 0.001:
+                        # sysid params
+                        continue
                 except yaml.YAMLError as exc:
                     print(exc)
 
             # Copy the csv file to the csv_results directory
+
+            # for walker only
+            suffix = ""
+            if "walker" in env_name.lower():
+                if model_lr == 0.001:
+                    suffix = "-ogparams"
+                else:
+                    suffix = "-sysparams"
+
             if shaky:
-                new_file_path = Path(csv_results_dir, f"{alg}_s{seed}_shaky.csv")
+                new_file_path = Path(
+                    csv_results_dir,
+                    f"{alg}_s{seed}_shaky_{partition.replace('_', '-')}{suffix}.csv",
+                )
             else:
-                new_file_path = Path(csv_results_dir, f"{alg}_s{seed}.csv")
+                new_file_path = Path(
+                    csv_results_dir,
+                    f"{alg}_s{seed}_{partition.replace('_', '-')}{suffix}.csv",
+                )
 
             if new_file_path.exists():
-                new_file_path = Path(new_file_path.parent, f"{alg}_s{seed+1}_shaky.csv")
-                continue
+                new_file_path = Path(
+                    new_file_path.parent,
+                    f"{alg}_s{seed+1}_shaky_{partition.replace('_', '-')}{suffix}.csv",
+                )
+                # continue
+            assert new_file_path.parent.exists()
             shutil.copy(results_file, new_file_path)
+            assert new_file_path.exists
             print(f"{results_file} ==> {new_file_path}")
 
 
