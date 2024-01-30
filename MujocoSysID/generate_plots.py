@@ -69,7 +69,7 @@ def main(env_abbrv, env_name, steps=15):
         "ant": 4596,
         "hc": 10317,
         "hop": 3399,
-        "walk": 4395,
+        "walk": 5000,
         "hum": 6160,
         ### Yuda Experts
         # "ant": 5207.53,
@@ -82,7 +82,8 @@ def main(env_abbrv, env_name, steps=15):
         "ant": 0.01,
         "hc": 0.075,
         "hop": 0.01,
-        "walk": 0.01,
+        # "walk": 0.01,
+        "walk": 0.05,
         "hum": 0.025,
     }
 
@@ -111,6 +112,7 @@ def main(env_abbrv, env_name, steps=15):
                 if len(data) >= steps:
                     scores.append(data[:steps])
                 else:
+                    continue
                     # extend last value to steps
                     print(f"Extending {alg} from {len(data)} to", end=" ")
                     scores.append(
