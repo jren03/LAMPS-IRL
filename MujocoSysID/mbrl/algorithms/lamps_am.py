@@ -552,6 +552,7 @@ def train(
                     work_dir=work_dir,
                 )
 
+            if (env_steps + 1) % cfg.overrides.sac_updates_every_steps == 0:
                 if cfg.reset_version == "nrpi":
                     # always reset to some expert state
                     nrpi_rollout_in_buffer(
@@ -565,7 +566,9 @@ def train(
                     )
                 else:
                     row_indices = np.random.choice(
-                        len(expert_reset_states), size=rollout_batch_size, replace=True
+                        len(expert_reset_states),
+                        size=rollout_batch_size,
+                        replace=True,
                     )
                     if cfg.reset_version == "psdp":
                         # reset to i*T/N

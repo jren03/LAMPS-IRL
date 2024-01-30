@@ -52,6 +52,8 @@ decay_lr_scheduler:
 # model pretraining
 pretrained_dynamics_model: false
 
+# update sac more frequently than model interaction
+num_sac_rollouts_per_update: 1
 
 root_dir: "./exp"
 hydra:
