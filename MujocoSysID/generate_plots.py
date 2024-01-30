@@ -57,12 +57,14 @@ def main(env_abbrv, env_name, steps=15):
         "mbpo": "grey",
         "sysid": "#4bacc6",
         "lamps": "#F79646",
+        "bc": "#8064A2",
     }
     algs_to_labels = {
         "exp": "Demo",
         "mbpo": "MBPO",
         "lamps": "LAMPS",
         "sysid": "SysID",
+        "bc": "BC",
     }
     env_name_to_exp_scores = {
         # SB3 Experts
@@ -82,9 +84,14 @@ def main(env_abbrv, env_name, steps=15):
         "ant": 0.01,
         "hc": 0.075,
         "hop": 0.01,
-        # "walk": 0.01,
-        "walk": 0.05,
+        "walk": 0.01,
         "hum": 0.025,
+        "div": 0.0,
+        "play": 0.0,
+    }
+    env_name_to_bc_scores = {
+        "div": 30.0,
+        "play": 35.2,
     }
 
     # steps = 150
@@ -95,10 +102,19 @@ def main(env_abbrv, env_name, steps=15):
     sz = 10_000
     partition = ""
     for alg in algs_to_colors.keys():
-        if alg == "exp":
+        if alg == "exp" and env_abbrv in env_name_to_exp_scores.keys():
             plt.plot(
                 np.arange(steps) * sz,
                 np.ones(steps) * env_name_to_exp_scores[env_abbrv],
+                color=algs_to_colors[alg],
+                linestyle="--",
+                label=algs_to_labels[alg],
+            )
+        elif alg == "bc" and env_abbrv in env_name_to_bc_scores.keys():
+            # plot BC on each subplot
+            plt.plot(
+                np.arange(steps) * sz,
+                np.ones(steps) * env_name_to_bc_scores[env_abbrv],
                 color=algs_to_colors[alg],
                 linestyle="--",
                 label=algs_to_labels[alg],
@@ -153,7 +169,10 @@ def main(env_abbrv, env_name, steps=15):
     plt.ylabel("IQM of $J(\\pi)$")
     plt.xlabel("Env. Steps")
     plt.xticks(rotation=45)
-    plt.title(f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble) + ", " + partition)
+    plt.title(
+        f"{env_name}, " + "$p_{tremble}=$" + str(p_tremble) + ", " + partition
+        # + "-backward-sw"
+    )
     plt.savefig(f"plots/{env_name}.png", bbox_inches="tight")
     print("SAVED")
 
@@ -164,23 +183,27 @@ if __name__ == "__main__":
         "-e",
         "--env_name",
         type=str,
-        choices=["ant", "hc", "hop", "hum", "walk"],
+        choices=["ant", "hc", "hop", "hum", "walk", "div", "play"],
         help="Name of the environment",
     )
     parser.add_argument("-s", "--steps", type=int, help="Number of steps", default=15)
     args = parser.parse_args()
 
-    env_abbr = args.env_name
-    if env_abbr == "ant":
+    env_abbrv = args.env_name
+    if env_abbrv == "ant":
         env_name = "ant_truncated_obs"
-    elif env_abbr == "hc":
+    elif env_abbrv == "hc":
         env_name = "HalfCheetah-v3"
-    elif env_abbr == "hop":
+    elif env_abbrv == "hop":
         env_name = "Hopper-v3"
-    elif env_abbr == "hum":
+    elif env_abbrv == "hum":
         env_name = "humanoid_truncated_obs"
-    elif env_abbr == "walk":
+    elif env_abbrv == "walk":
         env_name = "Walker2d-v3"
+    elif env_abbrv == "play":
+        env_name = "antmaze-large-play-v2"
+    elif env_abbrv == "div":
+        env_name = "antmaze-large-diverse-v2"
     if "truncated" not in env_name:
         env_name = f"gym___{env_name}"
-    main(env_abbr, env_name, steps=args.steps)
+    main(env_abbrv, env_name, steps=args.steps)

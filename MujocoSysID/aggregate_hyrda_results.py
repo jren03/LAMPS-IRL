@@ -70,6 +70,12 @@ def main(env_name, override, partition, date, algs_override=None):
                     if model_lr == 0.001:
                         # sysid params
                         continue
+                    # reset_version = hydra_yml.get("reset_version").replace("_", "-")
+                    # if reset_version == "backward-sw":
+                    #     print(f"Skipping {results_file} because it is forward_range")
+                    #     continue
+                    # else:
+                    #     print(f"reset_version: {reset_version}")
                 except yaml.YAMLError as exc:
                     print(exc)
 
