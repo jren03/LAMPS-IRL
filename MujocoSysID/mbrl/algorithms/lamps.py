@@ -47,9 +47,9 @@ MBPO_LOG_FORMAT = mbrl.constants.EVAL_LOG_FORMAT + [
     ("rollout_length", "RL", "int"),
     ("sac_reset_ratio", "SRR", "float"),
     ("disc_loss", "DL", "float"),
-    ("true_reset_eval_mean", "TR", "float"),
-    ("mixed_reset_eval_mean", "MR", "float"),
-    ("real_env_eval_mean", "RE", "float"),
+    # ("true_reset_eval_mean", "TR", "float"),
+    # ("mixed_reset_eval_mean", "MR", "float"),
+    # ("real_env_eval_mean", "RE", "float"),
 ]
 
 
@@ -725,10 +725,10 @@ def train(
                             "episode_reward": avg_reward,
                             "rollout_length": rollout_length,
                             "sac_reset_ratio": sac_reset_ratio,
-                            "disc_loss": disc_loss,
-                            "real_env_eval_mean": real_env_eval_mean,
-                            "true_reset_eval_mean": true_reset_eval_mean,
-                            "mixed_reset_eval_mean": mixed_reset_eval_mean,
+                            # "disc_loss": disc_loss,
+                            # "real_env_eval_mean": real_env_eval_mean,
+                            # "true_reset_eval_mean": true_reset_eval_mean,
+                            # "mixed_reset_eval_mean": mixed_reset_eval_mean,
                         },
                     )
                     # print(f"Time for evaluation: {time.time() - start_time}")
