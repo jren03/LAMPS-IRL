@@ -129,6 +129,7 @@ def main(env_abbrv, env_name, steps=15):
                     scores.append(data[:steps])
                 else:
                     # extend last value to steps
+                    continue
                     print(f"Extending {alg} from {len(data)} to", end=" ")
                     scores.append(
                         np.concatenate([data, np.ones(steps - len(data)) * data[-1]])

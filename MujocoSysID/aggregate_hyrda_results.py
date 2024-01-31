@@ -68,6 +68,7 @@ def main(env_name, override, partition, date, algs_override=None):
                     hydra_yml = yaml.safe_load(stream)
                     seed = hydra_yml.get("seed")
                     shaky = hydra_yml.get("shaky")
+                    p_tremble = hydra_yml.get("p_tremble")
                     model_lr = hydra_yml.get("overrides").get("model_lr")
                     if model_lr == 0.001:
                         # sysid params
@@ -102,10 +103,11 @@ def main(env_name, override, partition, date, algs_override=None):
                     f"{alg}_s{seed}_{partition.replace('_', '-')}{suffix}.csv",
                 )
 
-            if new_file_path.exists():
+            while new_file_path.exists():
+                seed += 1
                 new_file_path = Path(
                     new_file_path.parent,
-                    f"{alg}_s{seed+1}_shaky_{partition.replace('_', '-')}{suffix}.csv",
+                    f"{alg}_s{seed}_{partition.replace('_', '-')}{suffix}.csv",
                 )
                 # continue
             assert new_file_path.parent.exists()
