@@ -96,7 +96,9 @@ def fetch_demos(env_name, zero_out_rewards=True, use_mbrl_demos=False):
         dataset_path = "d4rl"
     else:
         num_demos, T = 64, 1000
-        if "guest" in str(Path(Path.cwd())):
+        if "ubuntu" in str(Path(Path.cwd())):
+            project_root = Path("/home/ubuntu")
+        elif "guest" in str(Path(Path.cwd())):
             project_root = Path("/home/guest/dev/juntao/")
         else:
             project_root = Path("/share/portal/jlr429/pessimistic-irl/")
