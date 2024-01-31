@@ -552,12 +552,12 @@ def train(
                     work_dir=work_dir,
                 )
 
-            if (
-                env_steps
-                > cfg.overrides.freq_train_model
-                // 2  # wait for model to be trained once
-                and (env_steps + 1) % int(cfg.overrides.sac_updates_every_steps) == 0
-            ):
+                # if (
+                #     env_steps
+                #     > cfg.overrides.freq_train_model
+                #     // 2  # wait for model to be trained once
+                #     and (env_steps + 1) % int(cfg.overrides.sac_updates_every_steps) == 0
+                # ):
                 if cfg.reset_version == "nrpi":
                     # always reset to some expert state
                     nrpi_rollout_in_buffer(
