@@ -128,7 +128,6 @@ def main(env_abbrv, env_name, steps=15):
                 if len(data) >= steps:
                     scores.append(data[:steps])
                 else:
-                    continue
                     # extend last value to steps
                     print(f"Extending {alg} from {len(data)} to", end=" ")
                     scores.append(
