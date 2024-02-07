@@ -144,7 +144,7 @@ def train(
     log_interval = 5
 
     env_name = cfg.overrides.env.lower().replace("gym___", "")
-    expert_dataset, expert_sa_pairs, qpos, qvel, goals = fetch_demos(env_name)
+    expert_dataset, expert_sa_pairs, qpos, qvel, goals, _ = fetch_demos(env_name, cfg)
     expert_sa_pairs = expert_sa_pairs.to(cfg.device)
 
     if "maze" in env_name:
@@ -186,6 +186,7 @@ def train(
         "pi_replay_buffer": pi_replay_buffer,
         "env": env,
         "f": f_net,
+        "cfg": cfg,
     }
     agent = TD3_BC(**kwargs)
     for _ in range(1):
